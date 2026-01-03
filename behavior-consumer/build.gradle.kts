@@ -18,6 +18,7 @@ dependencies {
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-validation")  // Bean Validation
     implementation("org.springframework.boot:spring-boot-starter-webflux")  // WebClient for Embedding Service
     implementation("org.springframework.kafka:spring-kafka")
 

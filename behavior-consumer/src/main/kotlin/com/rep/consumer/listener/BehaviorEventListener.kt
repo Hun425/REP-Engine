@@ -4,7 +4,10 @@ import com.rep.consumer.service.BulkIndexer
 import com.rep.consumer.service.PreferenceUpdater
 import com.rep.event.user.UserActionEvent
 import io.micrometer.core.instrument.Counter
+import io.micrometer.core.instrument.DistributionSummary
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -51,6 +54,17 @@ class BehaviorEventListener(
         .tag("topic", "user.action.v1")
         .register(meterRegistry)
 
+    private val consumeTimer: Timer = Timer.builder("kafka.consumer.batch.duration")
+        .tag("topic", "user.action.v1")
+        .description("Time spent processing a batch of records")
+        .register(meterRegistry)
+
+    private val batchSizeSummary: DistributionSummary = DistributionSummary.builder("kafka.consumer.batch.size")
+        .tag("topic", "user.action.v1")
+        .description("Distribution of batch sizes")
+        .publishPercentiles(0.5, 0.9, 0.99)
+        .register(meterRegistry)
+
     /**
      * 배치 단위로 이벤트를 수신하고 처리합니다.
      *
@@ -74,6 +88,9 @@ class BehaviorEventListener(
             acknowledgment.acknowledge()
             return
         }
+
+        val startTime = System.nanoTime()
+        batchSizeSummary.record(records.size.toDouble())
 
         log.debug { "Received batch of ${records.size} records" }
 
@@ -110,6 +127,8 @@ class BehaviorEventListener(
                 log.error(e) { "Failed to process batch of ${records.size} records" }
                 // 실패 시 커밋하지 않음 → Consumer 재시작 시 재처리됨
                 // DLQ 전송은 BulkIndexer에서 처리됨
+            } finally {
+                consumeTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS)
             }
         }
     }

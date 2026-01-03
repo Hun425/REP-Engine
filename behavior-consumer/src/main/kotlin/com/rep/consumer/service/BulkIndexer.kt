@@ -7,6 +7,8 @@ import com.rep.consumer.config.ConsumerProperties
 import com.rep.event.user.UserActionEvent
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
+import java.util.concurrent.TimeUnit
 import jakarta.annotation.PostConstruct
 import kotlinx.coroutines.delay
 import mu.KotlinLogging
@@ -44,6 +46,7 @@ class BulkIndexer(
     private lateinit var bulkFailedCounter: Counter
     private lateinit var bulkBatchFailedCounter: Counter  // 배치 단위 실패 카운터
     private lateinit var retryCounter: Counter
+    private lateinit var bulkIndexTimer: Timer  // 배치 인덱싱 처리 시간
 
     @PostConstruct
     fun initMetrics() {
@@ -65,6 +68,11 @@ class BulkIndexer(
             .tag("index", indexName)
             .register(meterRegistry)
 
+        bulkIndexTimer = Timer.builder("es.bulk.duration")
+            .tag("index", indexName)
+            .description("Time spent on bulk indexing")
+            .register(meterRegistry)
+
         log.info { "BulkIndexer initialized with index: $indexName" }
     }
 
@@ -83,34 +91,40 @@ class BulkIndexer(
     suspend fun indexBatchSync(events: List<UserActionEvent>): Int {
         if (events.isEmpty()) return 0
 
+        val startTime = System.nanoTime()
+
         log.debug { "Indexing batch of ${events.size} events to $indexName" }
 
         var lastException: Exception? = null
 
-        repeat(properties.maxRetries) { attempt ->
-            try {
-                val bulkRequest = buildBulkRequest(events)
-                val response = esClient.bulk(bulkRequest)
-                return handleBulkResponse(response, events)
-            } catch (e: Exception) {
-                lastException = e
-                retryCounter.increment()
+        try {
+            repeat(properties.maxRetries) { attempt ->
+                try {
+                    val bulkRequest = buildBulkRequest(events)
+                    val response = esClient.bulk(bulkRequest)
+                    return handleBulkResponse(response, events)
+                } catch (e: Exception) {
+                    lastException = e
+                    retryCounter.increment()
 
-                if (attempt < properties.maxRetries - 1) {
-                    // 지수 백오프: 1초, 2초, 4초, 8초, ...
-                    val delayMs = properties.retryDelayMs * (1L shl attempt)
-                    log.warn { "Bulk indexing attempt ${attempt + 1}/${properties.maxRetries} failed, retrying in ${delayMs}ms..." }
-                    delay(delayMs)
+                    if (attempt < properties.maxRetries - 1) {
+                        // 지수 백오프: 1초, 2초, 4초, 8초, ...
+                        val delayMs = properties.retryDelayMs * (1L shl attempt)
+                        log.warn { "Bulk indexing attempt ${attempt + 1}/${properties.maxRetries} failed, retrying in ${delayMs}ms..." }
+                        delay(delayMs)
+                    }
                 }
             }
-        }
 
-        // 모든 재시도 실패
-        log.error(lastException) { "Bulk indexing failed after ${properties.maxRetries} attempts for ${events.size} events" }
-        bulkBatchFailedCounter.increment()  // 배치 실패 카운트
-        bulkFailedCounter.increment(events.size.toDouble())  // 문서 실패 카운트
-        sendToDlq(events)
-        return 0
+            // 모든 재시도 실패
+            log.error(lastException) { "Bulk indexing failed after ${properties.maxRetries} attempts for ${events.size} events" }
+            bulkBatchFailedCounter.increment()  // 배치 실패 카운트
+            bulkFailedCounter.increment(events.size.toDouble())  // 문서 실패 카운트
+            sendToDlq(events)
+            return 0
+        } finally {
+            bulkIndexTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS)
+        }
     }
 
     /**

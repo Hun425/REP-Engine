@@ -25,9 +25,9 @@ private val log = KotlinLogging.logger {}
  * @see docs/phase%205.md
  */
 @Component
-@ConditionalOnProperty(name = ["spring.kafka.properties.schema.registry.url"])
+@ConditionalOnProperty(name = ["spring.kafka.producer.properties.schema.registry.url"])
 class SchemaRegistryHealthIndicator(
-    @Value("\${spring.kafka.properties.schema.registry.url}")
+    @Value("\${spring.kafka.producer.properties.schema.registry.url}")
     private val schemaRegistryUrl: String
 ) : HealthIndicator {
 

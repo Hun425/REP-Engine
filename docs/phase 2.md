@@ -10,30 +10,32 @@
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         Behavior Consumer Service                        │
 │                                                                          │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐  │
-│  │    Kafka     │    │   Message    │    │    Bulk Processor        │  │
-│  │   Listener   │───▶│   Buffer     │───▶│  ┌──────────────────┐   │  │
-│  │              │    │  (Channel)   │    │  │ ES Bulk Indexer  │   │  │
-│  └──────────────┘    └──────────────┘    │  └────────┬─────────┘   │  │
-│         │                                 │           │              │  │
-│         │ (실패 시)                       │  ┌────────▼─────────┐   │  │
-│         ▼                                 │  │ Preference       │   │  │
-│  ┌──────────────┐                        │  │ Vector Updater   │   │  │
-│  │     DLQ      │                        │  └──────────────────┘   │  │
-│  │   Producer   │                        └──────────────────────────┘  │
+│  ┌──────────────┐         ┌──────────────────────────────────────────┐  │
+│  │    Kafka     │         │           Bulk Processor                 │  │
+│  │   Batch      │────────▶│  ┌──────────────────┐                   │  │
+│  │   Listener   │         │  │ ES Bulk Indexer  │ (동기식 처리)      │  │
+│  └──────────────┘         │  └────────┬─────────┘                   │  │
+│         │                  │           │                              │  │
+│         │ (실패 시)        │  ┌────────▼─────────┐                   │  │
+│         ▼                  │  │ Preference       │ (best-effort)     │  │
+│  ┌──────────────┐         │  │ Vector Updater   │                   │  │
+│  │     DLQ      │         │  └──────────────────┘                   │  │
+│  │   Producer   │         └──────────────────────────────────────────┘  │
 │  └──────────────┘                                                       │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+> **Note:** 실제 구현에서는 Kafka Batch Listener가 직접 BulkIndexer를 호출하는 동기식 방식입니다.
+> 이 방식이 오프셋 커밋과 ES 저장의 일관성을 더 명확하게 보장합니다.
 
 ### 1.2 핵심 구성 요소
 
 | 컴포넌트 | 역할 | 기술 |
 |---------|------|------|
-| Kafka Listener | `user.action.v1` 토픽 구독, 배치 단위 메시지 수신 | Spring Kafka |
-| Message Buffer | 메시지를 메모리 버퍼에 수집, 배압 조절 | Kotlin Channel |
-| Bulk Processor | 설정된 조건(건수/시간) 도달 시 ES에 일괄 저장 | Virtual Threads |
+| Kafka Batch Listener | `user.action.v1` 토픽 구독, 배치 단위 메시지 수신 | Spring Kafka |
+| Bulk Indexer | ES Bulk API로 동기식 일괄 저장, 재시도 로직 포함 | Virtual Threads |
 | DLQ Producer | 처리 실패 메시지를 Dead Letter Queue로 전송 | Kafka Producer |
-| Preference Updater | 유저 취향 벡터 계산 및 Redis 저장 | Redis Client |
+| Preference Updater | 유저 취향 벡터 계산 및 Redis 저장 (best-effort) | Redis Client |
 
 
 ## 2. Elasticsearch 인덱스 설계 (Index Mapping)
@@ -105,86 +107,106 @@ class ElasticsearchConfig {
 
 #### 구현 코드
 
+> **Note:** 실제 구현은 Channel 기반 비동기 버퍼링 대신 **동기식 배치 처리**를 사용합니다.
+> Kafka Batch Listener가 직접 `indexBatchSync()`를 호출하여 오프셋 커밋 전 저장 완료를 보장합니다.
+
 ```kotlin
 @Component
 class BulkIndexer(
     private val esClient: ElasticsearchClient,
-    private val dlqProducer: DlqProducer
+    private val dlqProducer: DlqProducer,
+    private val properties: ConsumerProperties,
+    private val meterRegistry: MeterRegistry
 ) {
-    private val bulkSize = 500
-    private val flushInterval = Duration.ofSeconds(1)
-    private val buffer = Channel<UserActionEvent>(capacity = 1000)
+    @Value("\${elasticsearch.index.user-behavior:user_behavior_index}")
+    private lateinit var indexName: String
 
-    private val scope = CoroutineScope(
-        Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher() + SupervisorJob()
-    )
+    private lateinit var bulkSuccessCounter: Counter
+    private lateinit var bulkFailedCounter: Counter
+    private lateinit var retryCounter: Counter
+    private lateinit var bulkIndexTimer: Timer
 
-    init {
-        startFlushLoop()
-    }
+    /**
+     * 이벤트 배치를 ES에 동기적으로 저장합니다.
+     * 재시도 로직 포함 (기본 3회, 지수 백오프)
+     */
+    suspend fun indexBatchSync(events: List<UserActionEvent>): Int {
+        if (events.isEmpty()) return 0
 
-    suspend fun add(event: UserActionEvent) {
-        buffer.send(event)
-    }
+        val startTime = System.nanoTime()
+        var lastException: Exception? = null
 
-    private fun startFlushLoop() {
-        scope.launch {
-            val batch = mutableListOf<UserActionEvent>()
-            var lastFlush = System.currentTimeMillis()
+        try {
+            repeat(properties.maxRetries) { attempt ->
+                try {
+                    val bulkRequest = buildBulkRequest(events)
+                    val response = esClient.bulk(bulkRequest)
+                    return handleBulkResponse(response, events)
+                } catch (e: Exception) {
+                    lastException = e
+                    retryCounter.increment()
 
-            while (isActive) {
-                val event = withTimeoutOrNull(100) { buffer.receive() }
-
-                if (event != null) {
-                    batch.add(event)
-                }
-
-                val shouldFlush = batch.size >= bulkSize ||
-                    (batch.isNotEmpty() && System.currentTimeMillis() - lastFlush >= flushInterval.toMillis())
-
-                if (shouldFlush) {
-                    flushBatch(batch.toList())
-                    batch.clear()
-                    lastFlush = System.currentTimeMillis()
+                    if (attempt < properties.maxRetries - 1) {
+                        // 지수 백오프: 1초, 2초, 4초, ...
+                        val delayMs = properties.retryDelayMs * (1L shl attempt)
+                        delay(delayMs)
+                    }
                 }
             }
+
+            // 모든 재시도 실패 → DLQ 전송
+            sendToDlq(events)
+            return 0
+        } finally {
+            bulkIndexTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS)
         }
     }
 
-    private suspend fun flushBatch(events: List<UserActionEvent>) {
+    private fun buildBulkRequest(events: List<UserActionEvent>): BulkRequest {
         val bulkRequest = BulkRequest.Builder()
 
         events.forEach { event ->
             bulkRequest.operations { op ->
                 op.index { idx ->
-                    idx.index("user_behavior_index")
-                        .id(event.traceId)  // Idempotency 보장
-                        .document(event)
+                    idx.index(indexName)
+                        .id(event.traceId.toString())  // Idempotency 보장
+                        .document(mapOf(
+                            "traceId" to event.traceId.toString(),
+                            "userId" to event.userId.toString(),
+                            "productId" to event.productId.toString(),
+                            "category" to event.category.toString(),
+                            "actionType" to event.actionType.toString(),
+                            "metadata" to event.metadata,
+                            "timestamp" to event.timestamp.toEpochMilli()
+                        ))
                 }
             }
         }
 
-        try {
-            val response = esClient.bulk(bulkRequest.build())
-            handleBulkResponse(response, events)
-        } catch (e: Exception) {
-            log.error("Bulk indexing failed", e)
-            events.forEach { dlqProducer.send(it) }
-        }
+        return bulkRequest.build()
     }
 
-    private fun handleBulkResponse(response: BulkResponse, events: List<UserActionEvent>) {
+    private fun handleBulkResponse(response: BulkResponse, events: List<UserActionEvent>): Int {
+        var successCount = 0
+
         if (response.errors()) {
             response.items().forEachIndexed { index, item ->
                 if (item.error() != null) {
-                    log.error("Failed to index: ${item.error()?.reason()}")
-                    dlqProducer.send(events[index])
+                    bulkFailedCounter.increment()
+                    if (index < events.size) {
+                        dlqProducer.sendSync(events[index])
+                    }
+                } else {
+                    bulkSuccessCounter.increment()
+                    successCount++
                 }
             }
+        } else {
+            successCount = events.size
+            bulkSuccessCounter.increment(events.size.toDouble())
         }
 
-        val successCount = response.items().count { it.error() == null }
-        Metrics.counter("es.bulk.success").increment(successCount.toDouble())
+        return successCount
     }
 }
 ```
@@ -288,6 +310,35 @@ kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic user.action.v1
 ```
 
+### 3.7 Consumer Concurrency 권장값
+
+#### 파티션과 Concurrency 관계
+
+| 파티션 수 | 권장 Concurrency | 설명 |
+|-----------|------------------|------|
+| 12 | 3-6 | 개발/스테이징 환경. Consumer 인스턴스당 2-4 파티션 할당 |
+| 12 | 12 | 프로덕션 최대 병렬성. Consumer 인스턴스당 1 파티션 |
+
+#### 설정 가이드
+
+```yaml
+# application.yml
+consumer:
+  concurrency: 3  # ConcurrentKafkaListenerContainerFactory 설정
+
+spring:
+  kafka:
+    consumer:
+      max-poll-records: 500  # 파티션당 한 번에 가져올 레코드 수
+```
+
+#### 권장 사항
+
+1. **Concurrency ≤ 파티션 수**: Concurrency가 파티션 수를 초과하면 유휴 스레드 발생
+2. **단일 인스턴스 권장**: 개발 환경에서는 `concurrency: 3`으로 충분
+3. **스케일 아웃**: 프로덕션에서는 인스턴스 수 × concurrency ≤ 파티션 수 유지
+4. **Virtual Threads 활용**: ES I/O 대기 시 Virtual Threads가 효율적으로 처리
+
 
 ## 4. Kafka Listener 전체 구현
 
@@ -376,10 +427,12 @@ ES 인덱싱 완료 후 유저 취향 벡터를 갱신합니다. 취향 벡터 �
 ### EMA 가중치 (행동별 차등 적용)
 
 ```kotlin
-const val ALPHA_VIEW = 0.1f      // 조회: 약한 신호
-const val ALPHA_SEARCH = 0.2f   // 검색: 중간 신호
-const val ALPHA_CLICK = 0.3f    // 클릭: 중간 강도 신호
-const val ALPHA_PURCHASE = 0.5f // 구매: 강한 신호
+const val ALPHA_VIEW = 0.1f         // 조회: 약한 신호
+const val ALPHA_WISHLIST = 0.1f     // 위시리스트: 약한 신호
+const val ALPHA_SEARCH = 0.2f       // 검색: 중간 신호
+const val ALPHA_CLICK = 0.3f        // 클릭: 중간 강도 신호
+const val ALPHA_ADD_TO_CART = 0.3f  // 장바구니: 중간 강도 신호
+const val ALPHA_PURCHASE = 0.5f     // 구매: 강한 신호
 ```
 
 ### 처리 흐름

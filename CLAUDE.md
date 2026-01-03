@@ -53,7 +53,11 @@
 - [ ] 벡터 차원: 384 (multilingual-e5-base)
 - [ ] 상품 벡터: ES `product_index`에 저장
 - [ ] 유저 취향 벡터: Redis 캐시 (24시간 TTL) + ES 백업
-- [ ] EMA 가중치: VIEW=0.1, SEARCH=0.2, CLICK=0.3, PURCHASE=0.5
+- [ ] EMA 가중치:
+  - PURCHASE=0.5 (강한 신호)
+  - ADD_TO_CART=0.3, CLICK=0.3 (중간 강도 신호)
+  - SEARCH=0.2 (중간 신호)
+  - VIEW=0.1, WISHLIST=0.1 (약한 신호)
 
 ### ES 인덱스 추가/변경 시
 - [ ] `infrastructure.md`의 init-indices.sh 업데이트
@@ -89,3 +93,11 @@
 4. **아키텍처 변경 시:** 마스터 설계서 업데이트
 
 > 문서와 코드가 불일치하면 문서를 먼저 업데이트하고 코드를 수정할 것.
+
+## 주요 컴포넌트
+
+### EmbeddingClient (Phase 3 연동)
+- **위치:** `behavior-consumer/src/main/kotlin/com/rep/consumer/client/EmbeddingClient.kt`
+- **용도:** Python Embedding Service 호출 (상품 설명 → 384차원 벡터)
+- **현재 상태:** Phase 2에서 인터페이스 구현됨, Phase 3에서 실제 서비스 연동 예정
+- **HTTP 엔드포인트:** `POST /embed` (배치 텍스트 → 벡터 변환)

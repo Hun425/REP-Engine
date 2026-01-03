@@ -4,6 +4,7 @@ import com.rep.event.user.UserActionEvent
 import com.rep.simulator.config.SimulatorProperties
 import com.rep.simulator.domain.UserSession
 import io.micrometer.core.instrument.Counter
+import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.*
@@ -11,6 +12,7 @@ import mu.KotlinLogging
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.stereotype.Service
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
@@ -46,6 +48,14 @@ class TrafficSimulator(
         .register(meterRegistry)
 
     private val totalEventsSent = AtomicLong(0)
+    private val activeSessionCount = AtomicInteger(0)
+
+    init {
+        // 활성 세션 수 Gauge 등록
+        Gauge.builder("simulator.sessions.active") { activeSessionCount.get() }
+            .description("Number of active user sessions")
+            .register(meterRegistry)
+    }
 
     /**
      * 시뮬레이션을 시작합니다.
@@ -67,8 +77,13 @@ class TrafficSimulator(
         simulationJob = scope.launch {
             val sessions = (1..userCount).map { i ->
                 async {
-                    val session = UserSession("USER-${i.toString().padStart(6, '0')}")
-                    runUserSession(session, delayMillis)
+                    activeSessionCount.incrementAndGet()
+                    try {
+                        val session = UserSession("USER-${i.toString().padStart(6, '0')}")
+                        runUserSession(session, delayMillis)
+                    } finally {
+                        activeSessionCount.decrementAndGet()
+                    }
                 }
             }
 

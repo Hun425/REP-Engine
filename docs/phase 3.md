@@ -476,9 +476,12 @@ class PreferenceVectorCalculator {
     ): FloatArray {
         // 행동 유형별 가중치
         val alpha = when (actionType) {
-            ActionType.PURCHASE -> 0.5f  // 구매는 강한 신호
-            ActionType.CLICK -> 0.3f     // 클릭은 중간 신호
-            ActionType.VIEW -> 0.1f      // 조회는 약한 신호
+            ActionType.PURCHASE -> 0.5f      // 구매: 강한 신호
+            ActionType.ADD_TO_CART -> 0.3f   // 장바구니: 중간 강도 신호
+            ActionType.CLICK -> 0.3f         // 클릭: 중간 강도 신호
+            ActionType.SEARCH -> 0.2f        // 검색: 중간 신호
+            ActionType.VIEW -> 0.1f          // 조회: 약한 신호
+            ActionType.WISHLIST -> 0.1f      // 위시리스트: 약한 신호
             else -> 0.0f
         }
 
