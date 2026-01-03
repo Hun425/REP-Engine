@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: rep-simulator-test
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      properties:
+        schema.registry.url: http://localhost:8081
+
+simulator:
+  user-count: 1
+  delay-millis: 1000
+  topic: user.action.v1.test
+  enabled: false
+
+logging:
+  level:
+    root: WARN
+    com.rep.simulator: DEBUG

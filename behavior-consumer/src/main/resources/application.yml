@@ -1,0 +1,108 @@
+spring:
+  application:
+    name: behavior-consumer
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: behavior-consumer-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 500
+      properties:
+        schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+        specific.avro.reader: true
+        fetch.min.bytes: 1024
+        fetch.max.wait.ms: 500
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+
+# Elasticsearch
+elasticsearch:
+  host: ${ELASTICSEARCH_HOST:localhost}
+  port: ${ELASTICSEARCH_PORT:9200}
+  scheme: ${ELASTICSEARCH_SCHEME:http}
+  index:
+    user-behavior: user_behavior_index
+
+# Redis (Phase 3: 유저 취향 벡터 저장)
+spring.data.redis:
+  host: ${REDIS_HOST:localhost}
+  port: ${REDIS_PORT:6379}
+  timeout: 2000ms
+
+# Embedding Service (Phase 3)
+embedding:
+  service:
+    url: ${EMBEDDING_SERVICE_URL:http://localhost:8000}
+    timeout-ms: 5000
+    batch-size: 32
+
+# Consumer 설정
+consumer:
+  topic: user.action.v1
+  dlq-topic: user.action.v1.dlq
+  bulk-size: 500
+  concurrency: ${CONSUMER_CONCURRENCY:3}
+  max-retries: ${CONSUMER_MAX_RETRIES:3}
+  retry-delay-ms: ${CONSUMER_RETRY_DELAY_MS:1000}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.rep.consumer: DEBUG
+    org.apache.kafka: WARN
+    co.elastic.clients: WARN
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  kafka:
+    bootstrap-servers: kafka:29092
+    consumer:
+      properties:
+        schema.registry.url: http://schema-registry:8081
+    producer:
+      properties:
+        schema.registry.url: http://schema-registry:8081
+
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+elasticsearch:
+  host: elasticsearch
+  port: 9200
+  scheme: http
+  index:
+    user-behavior: user_behavior_index
+
+embedding:
+  service:
+    url: http://embedding-service:8000

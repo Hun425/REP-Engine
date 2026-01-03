@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: recommendation-api
+
+  jackson:
+    default-property-inclusion: non_null
+
+# Elasticsearch
+elasticsearch:
+  host: ${ELASTICSEARCH_HOST:localhost}
+  port: ${ELASTICSEARCH_PORT:9200}
+  scheme: ${ELASTICSEARCH_SCHEME:http}
+
+# Redis (유저 취향 벡터 조회)
+spring.data.redis:
+  host: ${REDIS_HOST:localhost}
+  port: ${REDIS_PORT:6379}
+  timeout: 2000ms
+
+# 추천 설정
+recommendation:
+  knn:
+    k: ${RECOMMENDATION_K:10}
+    num-candidates: ${RECOMMENDATION_NUM_CANDIDATES:100}
+  cache:
+    popular-ttl-minutes: ${RECOMMENDATION_CACHE_TTL:10}
+
+# Server
+server:
+  port: ${SERVER_PORT:8080}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.rep.recommendation: DEBUG
+    co.elastic.clients: WARN
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+elasticsearch:
+  host: elasticsearch
+  port: 9200

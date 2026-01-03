@@ -1,0 +1,32 @@
+@echo off
+set ES_HOST=http://localhost:9200
+
+echo Waiting for Elasticsearch to be ready...
+:wait_es
+curl -s "%ES_HOST%/_cluster/health" | findstr /C:"green" /C:"yellow" > nul
+if errorlevel 1 (
+    echo Elasticsearch is not ready yet...
+    timeout /t 5 /nobreak > nul
+    goto wait_es
+)
+
+echo Creating Elasticsearch indices...
+
+curl -X PUT "%ES_HOST%/user_behavior_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":3,\"number_of_replicas\":0,\"refresh_interval\":\"5s\"},\"mappings\":{\"properties\":{\"traceId\":{\"type\":\"keyword\"},\"userId\":{\"type\":\"keyword\"},\"productId\":{\"type\":\"keyword\"},\"category\":{\"type\":\"keyword\"},\"actionType\":{\"type\":\"keyword\"},\"metadata\":{\"type\":\"object\",\"enabled\":false},\"timestamp\":{\"type\":\"date\"}}}}"
+
+echo.
+
+curl -X PUT "%ES_HOST%/product_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0},\"mappings\":{\"properties\":{\"productId\":{\"type\":\"keyword\"},\"productName\":{\"type\":\"text\",\"analyzer\":\"standard\"},\"category\":{\"type\":\"keyword\"},\"price\":{\"type\":\"float\"},\"stock\":{\"type\":\"integer\"},\"brand\":{\"type\":\"keyword\"},\"description\":{\"type\":\"text\"},\"productVector\":{\"type\":\"dense_vector\",\"dims\":384,\"index\":true,\"similarity\":\"cosine\"},\"createdAt\":{\"type\":\"date\"},\"updatedAt\":{\"type\":\"date\"}}}}"
+
+echo.
+
+REM user_preference_index - ADR-004: KNN 인덱스 불필요 (백업용)
+curl -X PUT "%ES_HOST%/user_preference_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0,\"refresh_interval\":\"60s\"},\"mappings\":{\"properties\":{\"userId\":{\"type\":\"keyword\"},\"preferenceVector\":{\"type\":\"dense_vector\",\"dims\":384,\"index\":false},\"actionCount\":{\"type\":\"integer\"},\"lastUpdated\":{\"type\":\"date\"}}}}"
+
+echo.
+
+curl -X PUT "%ES_HOST%/notification_history_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":2,\"number_of_replicas\":0,\"refresh_interval\":\"5s\"},\"mappings\":{\"properties\":{\"notificationId\":{\"type\":\"keyword\"},\"userId\":{\"type\":\"keyword\"},\"productId\":{\"type\":\"keyword\"},\"type\":{\"type\":\"keyword\"},\"title\":{\"type\":\"text\"},\"channels\":{\"type\":\"keyword\"},\"status\":{\"type\":\"keyword\"},\"sentAt\":{\"type\":\"date\"}}}}"
+
+echo.
+echo Indices created successfully!
+curl -s "%ES_HOST%/_cat/indices?v"

@@ -1,0 +1,51 @@
+{
+  "type": "record",
+  "name": "UserActionEvent",
+  "namespace": "com.rep.event.user",
+  "doc": "유저 행동 이벤트 - 클릭, 검색, 구매 등",
+  "fields": [
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "분산 추적을 위한 고유 ID"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "유저 고유 식별자"
+    },
+    {
+      "name": "productId",
+      "type": "string",
+      "doc": "상품 고유 식별자"
+    },
+    {
+      "name": "category",
+      "type": "string",
+      "doc": "상품 카테고리"
+    },
+    {
+      "name": "actionType",
+      "type": {
+        "type": "enum",
+        "name": "ActionType",
+        "symbols": ["VIEW", "CLICK", "SEARCH", "PURCHASE", "ADD_TO_CART"]
+      },
+      "doc": "유저 행동 유형"
+    },
+    {
+      "name": "metadata",
+      "type": ["null", {"type": "map", "values": "string"}],
+      "default": null,
+      "doc": "추가 메타데이터 (검색어, 소스 페이지 등)"
+    },
+    {
+      "name": "timestamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "이벤트 발생 시각 (epoch millis)"
+    }
+  ]
+}

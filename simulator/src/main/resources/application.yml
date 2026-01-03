@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: rep-simulator
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        linger.ms: 5
+        batch.size: 16384
+        max.in.flight.requests.per.connection: 5
+        schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+
+# Simulator settings
+simulator:
+  user-count: ${SIMULATOR_USER_COUNT:100}
+  delay-millis: ${SIMULATOR_DELAY_MILLIS:1000}
+  topic: user.action.v1
+  enabled: ${SIMULATOR_ENABLED:true}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.rep.simulator: DEBUG
+    org.apache.kafka: WARN
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  kafka:
+    bootstrap-servers: kafka:29092
+    producer:
+      properties:
+        schema.registry.url: http://schema-registry:8081

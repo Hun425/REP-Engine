@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gradle wrapper:*)",
+      "Bash(./gradlew.bat build:*)",
+      "Bash(./gradlew.bat:*)",
+      "WebSearch",
+      "Bash(./gradlew build:*)"
+    ]
+  }
+}
