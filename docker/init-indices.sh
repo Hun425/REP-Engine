@@ -90,7 +90,7 @@ curl -X PUT "$ES_HOST/user_preference_index" -H 'Content-Type: application/json'
   "mappings": {
     "properties": {
       "userId": { "type": "keyword" },
-      "vector": {
+      "preferenceVector": {
         "type": "dense_vector",
         "dims": 384,
         "index": false

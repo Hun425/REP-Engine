@@ -368,7 +368,7 @@ curl -X PUT "$ES_HOST/user_preference_index" -H 'Content-Type: application/json'
         "index": false
       },
       "actionCount": { "type": "integer" },
-      "lastUpdated": { "type": "date" }
+      "updatedAt": { "type": "date" }
     }
   }
 }'

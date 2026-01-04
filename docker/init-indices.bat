@@ -22,7 +22,7 @@ curl -X PUT "%ES_HOST%/product_index" -H "Content-Type: application/json" -d "{\
 echo.
 
 REM user_preference_index - ADR-004: KNN 인덱스 불필요 (백업용)
-curl -X PUT "%ES_HOST%/user_preference_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0,\"refresh_interval\":\"60s\"},\"mappings\":{\"properties\":{\"userId\":{\"type\":\"keyword\"},\"vector\":{\"type\":\"dense_vector\",\"dims\":384,\"index\":false},\"actionCount\":{\"type\":\"integer\"},\"updatedAt\":{\"type\":\"date\"}}}}"
+curl -X PUT "%ES_HOST%/user_preference_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0,\"refresh_interval\":\"60s\"},\"mappings\":{\"properties\":{\"userId\":{\"type\":\"keyword\"},\"preferenceVector\":{\"type\":\"dense_vector\",\"dims\":384,\"index\":false},\"actionCount\":{\"type\":\"integer\"},\"updatedAt\":{\"type\":\"date\"}}}}"
 
 echo.
 
