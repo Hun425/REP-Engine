@@ -11,7 +11,8 @@
       "Bash(ls -la \"C:\\\\Users\\\\chae0\\\\Desktop\\\\project\\\\REP-Engine\\\\docs\"\" 2>&1 || echo \"Checking docs folder... \")",
       "Bash(dir:*)",
       "Bash(C:)",
-      "Bash(gradlew.bat build:*)"
+      "Bash(gradlew.bat build:*)",
+      "Bash(cat:*)"
     ]
   }
 }

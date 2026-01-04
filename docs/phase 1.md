@@ -42,9 +42,22 @@ data class UserActionEvent(
 )
 ```
 
-## 3. 핵심 컴포넌트 설계
+## 3. 설정값 (application.yml)
 
-### 3.1 Kafka Producer Configuration
+시뮬레이터의 동작을 제어하는 설정값입니다.
+
+```yaml
+simulator:
+  user-count: ${SIMULATOR_USER_COUNT:100}           # 가상 유저 수
+  delay-millis: ${SIMULATOR_DELAY_MILLIS:1000}     # 행동 간 지연 (ms)
+  topic: user.action.v1                            # Kafka 토픽
+  product-count-per-category: ${SIMULATOR_PRODUCT_COUNT:100}  # 카테고리당 상품 수
+  enabled: ${SIMULATOR_ENABLED:true}               # 활성화 여부
+```
+
+## 4. 핵심 컴포넌트 설계
+
+### 4.1 Kafka Producer Configuration
 
 단순 설정이 아닌, 실무에서 권장되는 **안정성(Reliability)** 옵션을 적용합니다.
 
@@ -55,7 +68,7 @@ data class UserActionEvent(
 - **Linger.ms = 5:** 처리량 향상을 위해 메시지를 약간 모아서 보냄.
 
 
-### 3.2 UserSession (가상 유저 상태 관리)
+### 4.2 UserSession (가상 유저 상태 관리)
 
 각 유저는 고유한 특성(예: 특정 카테고리 선호)을 가지며, 이를 통해 데이터의 편향성을 시뮬레이션합니다.
 
@@ -111,7 +124,7 @@ class UserSession(val userId: String) {
 }
 ```
 
-### 3.3 Simulator 엔진 (Coroutine 기반)
+### 4.3 Simulator 엔진 (Coroutine 기반)
 
 수천 명의 유저가 동시에 활동하는 상황을 `Dispatcher.Default`를 활용해 비동기로 처리합니다.
 
@@ -137,7 +150,7 @@ class TrafficSimulator(
 }
 ```
 
-## 4. 실무형 에러 핸들링 및 로깅
+## 5. 실무형 에러 핸들링 및 로깅
 
 메시지 전송 실패 시 단순히 로그만 찍는 것이 아니라, 재시도 전략이나 메트릭 수집을 고려합니다.
 
@@ -158,7 +171,7 @@ private fun sendToKafka(event: UserActionEvent) {
 }
 ```
 
-## 5. 단계별 구현 가이드
+## 6. 단계별 구현 가이드
 
 1. **Project Initialization:** Spring Initializr에서 Kotlin, Spring Kafka 선택하여 프로젝트 생성.
 
@@ -171,6 +184,6 @@ private fun sendToKafka(event: UserActionEvent) {
 5. **Kibana 모니터링:** 데이터가 인덱싱되는 패턴을 관찰하며 `userCount` 조절.
 
 
-## 6. 다음 단계 예고
+## 7. 다음 단계 예고
 
 시뮬레이터가 완성되어 데이터가 Kafka로 흐르기 시작하면, **Phase 2: Consumer & ElasticSearch Indexing** 설계를 통해 이 데이터를 어떻게 검색 엔진에 효율적으로 집어넣을지 다룹니다.

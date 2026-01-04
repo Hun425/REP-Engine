@@ -72,7 +72,7 @@ class UserPreferenceRepository(
         try {
             val key = "$KEY_PREFIX$userId"
             val data = UserPreferenceData(
-                vector = vector.toList(),
+                preferenceVector = vector.toList(),
                 actionCount = actionCount,
                 updatedAt = System.currentTimeMillis()
             )
@@ -99,7 +99,7 @@ class UserPreferenceRepository(
 
             if (response.found()) {
                 val source = response.source()
-                val vector = source?.vector?.toFloatArray()
+                val vector = source?.preferenceVector?.toFloatArray()
                 val actionCount = source?.actionCount ?: 1
 
                 if (vector != null) {

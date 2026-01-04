@@ -10,7 +10,7 @@ package com.rep.model
  */
 data class UserPreferenceDocument(
     val userId: String? = null,
-    val vector: List<Float>? = null,
+    val preferenceVector: List<Float>? = null,
     val actionCount: Int? = null,
     val updatedAt: Long? = null
 )

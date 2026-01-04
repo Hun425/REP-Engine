@@ -65,7 +65,7 @@ class UserPreferenceRepository(
     suspend fun save(userId: String, vector: FloatArray, actionCount: Int = 1) {
         val key = "$KEY_PREFIX$userId"
         val data = UserPreferenceData(
-            vector = vector.toList(),
+            preferenceVector = vector.toList(),
             actionCount = actionCount,
             updatedAt = System.currentTimeMillis()
         )
@@ -112,7 +112,7 @@ class UserPreferenceRepository(
 
             if (cached != null) {
                 log.debug { "Cache hit for userId=$userId" }
-                objectMapper.readValue<UserPreferenceData>(cached).vector.toFloatArray()
+                objectMapper.readValue<UserPreferenceData>(cached).preferenceVector.toFloatArray()
             } else {
                 // 2. Redis 미스 → ES에서 복구
                 log.debug { "Cache miss for userId=$userId, trying ES fallback" }
@@ -149,7 +149,7 @@ class UserPreferenceRepository(
         try {
             val document = mapOf(
                 "userId" to userId,
-                "vector" to vector.toList(),
+                "preferenceVector" to vector.toList(),
                 "actionCount" to actionCount,
                 "updatedAt" to System.currentTimeMillis()
             )
@@ -181,7 +181,7 @@ class UserPreferenceRepository(
 
             if (response.found()) {
                 val source = response.source()
-                val vector = source?.vector?.toFloatArray()
+                val vector = source?.preferenceVector?.toFloatArray()
                 val actionCount = source?.actionCount ?: 1
 
                 vector?.let { Pair(it, actionCount) }
