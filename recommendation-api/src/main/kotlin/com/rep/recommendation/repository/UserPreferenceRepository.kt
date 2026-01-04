@@ -3,12 +3,13 @@ package com.rep.recommendation.repository
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.rep.recommendation.model.UserPreferenceData
-import com.rep.recommendation.model.UserPreferenceDocument
+import com.rep.model.UserPreferenceData
+import com.rep.model.UserPreferenceDocument
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import mu.KotlinLogging
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Repository
+import java.time.Duration
 
 private val log = KotlinLogging.logger {}
 
@@ -28,13 +29,14 @@ class UserPreferenceRepository(
     companion object {
         private const val KEY_PREFIX = "user:preference:"
         private const val ES_INDEX = "user_preference_index"
+        private val TTL = Duration.ofHours(24)
     }
 
     /**
      * 유저 취향 벡터를 조회합니다.
      *
      * 1. Redis에서 먼저 조회
-     * 2. Redis 미스 시 ES에서 폴백
+     * 2. Redis 미스 시 ES에서 폴백 후 Redis에 캐싱
      *
      * @param userId 유저 ID
      * @return 취향 벡터 또는 null (Cold Start)
@@ -52,7 +54,10 @@ class UserPreferenceRepository(
             } else {
                 // 2. Redis 미스 → ES에서 폴백
                 log.debug { "Cache miss for userId=$userId, trying ES fallback" }
-                getFromEs(userId)
+                getFromEs(userId)?.also { (vector, actionCount) ->
+                    // Redis에 캐싱하여 다음 조회 시 성능 향상
+                    cacheToRedis(userId, vector, actionCount)
+                }?.first
             }
         } catch (e: Exception) {
             log.error(e) { "Failed to get preference vector for userId=$userId" }
@@ -61,9 +66,31 @@ class UserPreferenceRepository(
     }
 
     /**
-     * ES에서 유저 취향 벡터를 조회합니다.
+     * ES에서 조회한 벡터를 Redis에 캐싱합니다.
      */
-    private fun getFromEs(userId: String): FloatArray? {
+    private suspend fun cacheToRedis(userId: String, vector: FloatArray, actionCount: Int) {
+        try {
+            val key = "$KEY_PREFIX$userId"
+            val data = UserPreferenceData(
+                vector = vector.toList(),
+                actionCount = actionCount,
+                updatedAt = System.currentTimeMillis()
+            )
+            redisTemplate.opsForValue()
+                .set(key, objectMapper.writeValueAsString(data), TTL)
+                .awaitSingleOrNull()
+            log.debug { "Cached preference vector from ES fallback for userId=$userId" }
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to cache preference vector for userId=$userId" }
+        }
+    }
+
+    /**
+     * ES에서 유저 취향 벡터와 actionCount를 조회합니다.
+     *
+     * @return Pair(벡터, actionCount) 또는 null
+     */
+    private fun getFromEs(userId: String): Pair<FloatArray, Int>? {
         return try {
             val response = esClient.get(
                 { g -> g.index(ES_INDEX).id(userId) },
@@ -71,7 +98,15 @@ class UserPreferenceRepository(
             )
 
             if (response.found()) {
-                response.source()?.preferenceVector?.map { it.toFloat() }?.toFloatArray()
+                val source = response.source()
+                val vector = source?.vector?.toFloatArray()
+                val actionCount = source?.actionCount ?: 1
+
+                if (vector != null) {
+                    Pair(vector, actionCount)
+                } else {
+                    null
+                }
             } else {
                 null
             }

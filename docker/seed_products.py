@@ -6,8 +6,17 @@ ES product_index에 테스트용 상품 데이터를 생성합니다.
 Embedding Service를 호출하여 상품 벡터를 생성합니다.
 
 사용법:
-    python seed_products.py [상품 수]
-    python seed_products.py 100   # 100개 상품 생성
+    python seed_products.py [상품 수] [--random]
+
+    python seed_products.py 700           # 700개 상품 균등 분배 (카테고리별 100개씩)
+    python seed_products.py 700 --random  # 700개 상품 랜덤 분배
+
+옵션:
+    --random: 카테고리별 랜덤 분배 (기본값: 균등 분배)
+
+    균등 분배(기본값)가 권장됩니다.
+    UserSession.kt가 카테고리별로 1~100 범위의 상품 ID를 참조하기 때문에,
+    균등 분배 시 모든 상품 ID가 유효하게 매칭됩니다.
 
 환경 변수:
     ES_HOST: Elasticsearch 호스트 (기본값: http://localhost:9200)
@@ -90,37 +99,81 @@ def check_health() -> bool:
     return True
 
 
-def generate_products(count: int) -> List[Dict[str, Any]]:
-    """상품 데이터 생성"""
-    print(f"\n[2/4] Generating {count} products...")
+def generate_products(count: int, balanced: bool = True) -> List[Dict[str, Any]]:
+    """
+    상품 데이터 생성
+
+    상품 ID 형식: PROD-{카테고리3자}-{카테고리별순번5자리}
+    예: PROD-ELE-00001, PROD-FAS-00001, PROD-ELE-00002
+
+    이 형식은 UserSession.kt의 상품 ID 생성 로직과 일치해야 합니다.
+    UserSession은 카테고리별로 1~100 범위의 상품을 참조합니다.
+
+    Args:
+        count: 생성할 총 상품 수
+        balanced: True면 카테고리별 균등 분배 (권장), False면 랜덤 분배
+    """
+    print(f"\n[2/4] Generating {count} products (balanced={balanced})...")
     products = []
 
-    for i in range(1, count + 1):
-        category = random.choice(CATEGORIES)
-        product_name = random.choice(PRODUCTS_BY_CATEGORY[category])
-        brand = random.choice(BRANDS_BY_CATEGORY[category])
-        price = random.randint(10000, 500000)
-        stock = random.randint(0, 1000)
+    # 카테고리별 카운터 (카테고리별 순번 관리)
+    category_counters = {cat: 0 for cat in CATEGORIES}
 
-        product_id = f"PROD-{category[:3]}-{i:05d}"
-        full_name = f"{brand} {product_name}"
-        description = f"{brand}에서 만든 고품질 {product_name}입니다. {category} 카테고리의 인기 상품."
+    if balanced:
+        # 균등 분배: 각 카테고리별로 count/7개씩 생성
+        # UserSession.kt가 1~100 범위를 참조하므로 균등 분배 권장
+        per_category = count // len(CATEGORIES)
+        remainder = count % len(CATEGORIES)
 
-        products.append({
-            "id": product_id,
-            "name": full_name,
-            "category": category,
-            "brand": brand,
-            "price": price,
-            "stock": stock,
-            "description": description
-        })
+        for cat_idx, category in enumerate(CATEGORIES):
+            # 나머지는 앞 카테고리들에 1개씩 추가
+            cat_count = per_category + (1 if cat_idx < remainder else 0)
 
-        if i % 50 == 0:
-            print(f"  - Generated {i} / {count} products")
+            for _ in range(cat_count):
+                category_counters[category] += 1
+                product = _create_product(category, category_counters[category])
+                products.append(product)
+    else:
+        # 랜덤 분배: 기존 로직
+        for i in range(1, count + 1):
+            category = random.choice(CATEGORIES)
+            category_counters[category] += 1
+            product = _create_product(category, category_counters[category])
+            products.append(product)
 
-    print(f"  - Generated {count} products total")
+            if i % 50 == 0:
+                print(f"  - Generated {i} / {count} products")
+
+    # 카테고리별 생성 통계 출력
+    print(f"  - Generated {len(products)} products total")
+    print("  - Products per category:")
+    for cat, cnt in sorted(category_counters.items()):
+        if cnt > 0:
+            print(f"      {cat}: {cnt}")
+
     return products
+
+
+def _create_product(category: str, seq: int) -> Dict[str, Any]:
+    """단일 상품 데이터 생성"""
+    product_name = random.choice(PRODUCTS_BY_CATEGORY[category])
+    brand = random.choice(BRANDS_BY_CATEGORY[category])
+    price = random.randint(10000, 500000)
+    stock = random.randint(0, 1000)
+
+    product_id = f"PROD-{category[:3]}-{seq:05d}"
+    full_name = f"{brand} {product_name}"
+    description = f"{brand}에서 만든 고품질 {product_name}입니다. {category} 카테고리의 인기 상품."
+
+    return {
+        "id": product_id,
+        "name": full_name,
+        "category": category,
+        "brand": brand,
+        "price": price,
+        "stock": stock,
+        "description": description
+    }
 
 
 def get_embeddings(texts: List[str]) -> List[List[float]]:
@@ -195,8 +248,16 @@ def send_bulk_request(bulk_data: str) -> Dict[str, Any]:
 
 
 def main():
-    # 상품 수 설정
-    product_count = int(sys.argv[1]) if len(sys.argv) > 1 else 100
+    # 커맨드라인 인자 파싱
+    # 사용법: python seed_products.py [상품수] [--random]
+    product_count = 100
+    balanced = True  # 기본값: 균등 분배
+
+    for arg in sys.argv[1:]:
+        if arg == "--random":
+            balanced = False
+        elif arg.isdigit():
+            product_count = int(arg)
 
     print("=" * 40)
     print("REP-Engine Product Data Seeding")
@@ -204,6 +265,7 @@ def main():
     print(f"Elasticsearch: {ES_HOST}")
     print(f"Embedding Service: {EMBEDDING_HOST}")
     print(f"Product Count: {product_count}")
+    print(f"Distribution: {'Balanced (recommended)' if balanced else 'Random'}")
     print("=" * 40)
 
     # 헬스체크
@@ -212,7 +274,7 @@ def main():
         sys.exit(1)
 
     # 상품 생성
-    products = generate_products(product_count)
+    products = generate_products(product_count, balanced=balanced)
 
     # Bulk 요청 생성
     bulk_data = create_bulk_request(products)

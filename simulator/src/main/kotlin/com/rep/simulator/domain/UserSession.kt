@@ -11,8 +11,14 @@ import kotlin.random.Random
  *
  * 각 유저는 고유한 선호 카테고리를 가지며,
  * 70% 확률로 선호 카테고리의 상품에 대해 행동합니다.
+ *
+ * @param userId 유저 ID
+ * @param productCountPerCategory 카테고리당 상품 수 (seed_products.py와 일치해야 함)
  */
-class UserSession(val userId: String) {
+class UserSession(
+    val userId: String,
+    private val productCountPerCategory: Int = 100
+) {
 
     companion object {
         private val CATEGORIES = listOf(
@@ -26,11 +32,12 @@ class UserSession(val userId: String) {
         )
 
         private val ACTION_WEIGHTS = mapOf(
-            ActionType.VIEW to 50,      // 50% - 가장 빈번
-            ActionType.CLICK to 25,     // 25% - 관심 표현
-            ActionType.SEARCH to 10,    // 10% - 검색
-            ActionType.ADD_TO_CART to 10, // 10% - 장바구니
-            ActionType.PURCHASE to 5    // 5% - 구매 (가장 드묾)
+            ActionType.VIEW to 45,        // 45% - 가장 빈번
+            ActionType.CLICK to 25,       // 25% - 관심 표현
+            ActionType.SEARCH to 10,      // 10% - 검색
+            ActionType.ADD_TO_CART to 8,  // 8% - 장바구니
+            ActionType.PURCHASE to 5,     // 5% - 구매 (가장 드묾)
+            ActionType.WISHLIST to 7      // 7% - 위시리스트
         )
 
         private val TOTAL_WEIGHT = ACTION_WEIGHTS.values.sum()
@@ -90,12 +97,16 @@ class UserSession(val userId: String) {
      * 상품 ID 선택
      * - 30% 확률로 최근 본 상품 재방문 (리마케팅 시뮬레이션)
      * - 70% 확률로 새 상품
+     *
+     * Note: seed_products.py에서 생성한 상품 ID 형식과 일치해야 함
+     * 형식: PROD-{category[:3]}-{00001~productCountPerCategory}
      */
     private fun selectProduct(category: String): String {
         return if (recentProducts.isNotEmpty() && Random.nextDouble() < 0.3) {
             recentProducts.random()
         } else {
-            "PROD-${category.take(3)}-${Random.nextInt(1, 10000)}"
+            val productNum = Random.nextInt(1, productCountPerCategory + 1)
+            "PROD-${category.take(3)}-${productNum.toString().padStart(5, '0')}"
         }
     }
 
@@ -137,6 +148,9 @@ class UserSession(val userId: String) {
             )
             ActionType.ADD_TO_CART -> mapOf(
                 "quantity" to Random.nextInt(1, 5).toString()
+            )
+            ActionType.WISHLIST -> mapOf(
+                "source" to listOf("product_detail", "recommendation", "search_result").random()
             )
         }
     }

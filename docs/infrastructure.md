@@ -156,6 +156,7 @@ services:
 
   # ============================================
   # Embedding Service (Phase 3)
+  # ADR-003: multilingual-e5-base Self-hosted
   # ============================================
   embedding-service:
     build:
@@ -166,14 +167,14 @@ services:
       - "8000:8000"
     environment:
       - MODEL_NAME=intfloat/multilingual-e5-base
-      - MAX_BATCH_SIZE=32
-      - WORKERS=2
+      - WORKERS=1
     volumes:
       - embedding-model-cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
+      start_period: 120s
       retries: 3
     deploy:
       resources:
@@ -287,7 +288,8 @@ curl -X PUT "$ES_HOST/user_behavior_index" -H 'Content-Type: application/json' -
   "settings": {
     "number_of_shards": 3,
     "number_of_replicas": 0,
-    "refresh_interval": "5s"
+    "refresh_interval": "5s",
+    "index.mapping.total_fields.limit": 100
   },
   "mappings": {
     "properties": {
@@ -305,6 +307,7 @@ curl -X PUT "$ES_HOST/user_behavior_index" -H 'Content-Type: application/json' -
 echo ""
 
 # product_index - 상품 정보 + 벡터
+# Note: ES 8.x에서는 dense_vector가 자동으로 KNN 검색 지원 (index.knn 설정 불필요)
 curl -X PUT "$ES_HOST/product_index" -H 'Content-Type: application/json' -d '
 {
   "settings": {
@@ -314,16 +317,30 @@ curl -X PUT "$ES_HOST/product_index" -H 'Content-Type: application/json' -d '
   "mappings": {
     "properties": {
       "productId": { "type": "keyword" },
-      "productName": { "type": "text", "analyzer": "standard" },
+      "productName": {
+        "type": "text",
+        "analyzer": "standard",
+        "fields": {
+          "keyword": { "type": "keyword" }
+        }
+      },
       "category": { "type": "keyword" },
+      "subCategory": { "type": "keyword" },
       "price": { "type": "float" },
+      "stock": { "type": "integer" },
       "brand": { "type": "keyword" },
       "description": { "type": "text" },
+      "tags": { "type": "keyword" },
       "productVector": {
         "type": "dense_vector",
         "dims": 384,
         "index": true,
-        "similarity": "cosine"
+        "similarity": "cosine",
+        "index_options": {
+          "type": "hnsw",
+          "m": 16,
+          "ef_construction": 100
+        }
       },
       "createdAt": { "type": "date" },
       "updatedAt": { "type": "date" }
@@ -333,12 +350,14 @@ curl -X PUT "$ES_HOST/product_index" -H 'Content-Type: application/json' -d '
 
 echo ""
 
-# user_preference_index - 유저 취향 벡터
+# user_preference_index - 유저 취향 벡터 (백업용, KNN 검색 대상 아님)
+# ADR-004: 유저 벡터는 Redis에서 조회, ES는 백업 용도이므로 KNN 인덱스 불필요
 curl -X PUT "$ES_HOST/user_preference_index" -H 'Content-Type: application/json' -d '
 {
   "settings": {
     "number_of_shards": 1,
-    "number_of_replicas": 0
+    "number_of_replicas": 0,
+    "refresh_interval": "60s"
   },
   "mappings": {
     "properties": {
@@ -346,9 +365,9 @@ curl -X PUT "$ES_HOST/user_preference_index" -H 'Content-Type: application/json'
       "preferenceVector": {
         "type": "dense_vector",
         "dims": 384,
-        "index": true,
-        "similarity": "cosine"
+        "index": false
       },
+      "actionCount": { "type": "integer" },
       "lastUpdated": { "type": "date" }
     }
   }
@@ -465,12 +484,18 @@ docker-compose up -d
 # 헬스체크 대기 (약 30초 소요)
 docker-compose ps
 
-# Kafka 토픽 생성
+# Kafka 토픽 생성 (필수! AUTO_CREATE_TOPICS=false이므로 수동 생성 필요)
 ./init-topics.sh
 
 # Elasticsearch 인덱스 생성
 ./init-indices.sh
+
+# (선택) 테스트용 상품 데이터 시딩
+python seed_products.py 700  # 카테고리당 약 100개씩 생성
 ```
+
+> **중요:** `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false`로 설정되어 있으므로,
+> `init-topics.sh`를 실행하지 않으면 메시지 발행 시 에러가 발생합니다.
 
 ### 6.2 상태 확인
 

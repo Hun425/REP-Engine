@@ -16,7 +16,8 @@ curl -X PUT "$ES_HOST/user_behavior_index" -H 'Content-Type: application/json' -
   "settings": {
     "number_of_shards": 3,
     "number_of_replicas": 0,
-    "refresh_interval": "5s"
+    "refresh_interval": "5s",
+    "index.mapping.total_fields.limit": 100
   },
   "mappings": {
     "properties": {
@@ -34,6 +35,7 @@ curl -X PUT "$ES_HOST/user_behavior_index" -H 'Content-Type: application/json' -
 echo ""
 
 # product_index - 상품 정보 + 벡터
+# Note: ES 8.x에서는 dense_vector가 자동으로 KNN 검색 지원 (index.knn 설정 불필요)
 curl -X PUT "$ES_HOST/product_index" -H 'Content-Type: application/json' -d '
 {
   "settings": {
@@ -43,17 +45,30 @@ curl -X PUT "$ES_HOST/product_index" -H 'Content-Type: application/json' -d '
   "mappings": {
     "properties": {
       "productId": { "type": "keyword" },
-      "productName": { "type": "text", "analyzer": "standard" },
+      "productName": {
+        "type": "text",
+        "analyzer": "standard",
+        "fields": {
+          "keyword": { "type": "keyword" }
+        }
+      },
       "category": { "type": "keyword" },
+      "subCategory": { "type": "keyword" },
       "price": { "type": "float" },
       "stock": { "type": "integer" },
       "brand": { "type": "keyword" },
       "description": { "type": "text" },
+      "tags": { "type": "keyword" },
       "productVector": {
         "type": "dense_vector",
         "dims": 384,
         "index": true,
-        "similarity": "cosine"
+        "similarity": "cosine",
+        "index_options": {
+          "type": "hnsw",
+          "m": 16,
+          "ef_construction": 100
+        }
       },
       "createdAt": { "type": "date" },
       "updatedAt": { "type": "date" }
@@ -75,13 +90,13 @@ curl -X PUT "$ES_HOST/user_preference_index" -H 'Content-Type: application/json'
   "mappings": {
     "properties": {
       "userId": { "type": "keyword" },
-      "preferenceVector": {
+      "vector": {
         "type": "dense_vector",
         "dims": 384,
         "index": false
       },
       "actionCount": { "type": "integer" },
-      "lastUpdated": { "type": "date" }
+      "updatedAt": { "type": "date" }
     }
   }
 }'

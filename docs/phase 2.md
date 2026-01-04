@@ -345,16 +345,20 @@ spring:
 > **중요:** ES 저장이 완료된 후에만 오프셋을 커밋하여 메시지 유실을 방지합니다.
 
 ```kotlin
+/**
+ * Virtual Thread Dispatcher를 DI로 주입받아 사용합니다.
+ * DispatcherConfig에서 싱글톤으로 관리되어 리소스 누수를 방지합니다.
+ */
 @Component
 class BehaviorEventListener(
     private val bulkIndexer: BulkIndexer,
-    private val meterRegistry: MeterRegistry
+    private val preferenceUpdater: PreferenceUpdater,
+    private val meterRegistry: MeterRegistry,
+    @Qualifier("virtualThreadDispatcher") private val virtualThreadDispatcher: CloseableCoroutineDispatcher
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
     }
-
-    private val virtualThreadDispatcher = Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
 
     private val processedCounter = Counter.builder("kafka.consumer.processed")
         .tag("topic", "user.action.v1")
@@ -366,7 +370,7 @@ class BehaviorEventListener(
 
     @KafkaListener(
         topics = ["\${consumer.topic}"],
-        groupId = "behavior-consumer-group",
+        groupId = "\${spring.kafka.consumer.group-id}",
         containerFactory = "kafkaListenerContainerFactory"
     )
     fun consume(
@@ -387,11 +391,18 @@ class BehaviorEventListener(
                 // 2. ES에 동기적으로 저장 (저장 완료까지 대기)
                 val indexedCount = bulkIndexer.indexBatchSync(events)
 
-                // 3. 메트릭 업데이트
+                // 3. 유저 취향 벡터 갱신 (best-effort)
+                try {
+                    preferenceUpdater.updatePreferencesBatch(events)
+                } catch (e: Exception) {
+                    log.warn(e) { "Failed to update preferences, but ES indexing succeeded" }
+                }
+
+                // 4. 메트릭 업데이트
                 processedCounter.increment(records.size.toDouble())
                 indexedCounter.increment(indexedCount.toDouble())
 
-                // 4. ES 저장 성공 후에만 오프셋 커밋
+                // 5. ES 저장 성공 후에만 오프셋 커밋
                 acknowledgment.acknowledge()
 
             } catch (e: Exception) {
@@ -401,10 +412,7 @@ class BehaviorEventListener(
         }
     }
 
-    @PreDestroy
-    fun cleanup() {
-        virtualThreadDispatcher.close()
-    }
+    // Dispatcher의 생명주기는 DispatcherConfig에서 관리합니다.
 }
 ```
 

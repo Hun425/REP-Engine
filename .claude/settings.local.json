@@ -5,7 +5,13 @@
       "Bash(./gradlew.bat build:*)",
       "Bash(./gradlew.bat:*)",
       "WebSearch",
-      "Bash(./gradlew build:*)"
+      "Bash(./gradlew build:*)",
+      "Bash(dir \"C:\\\\Users\\\\chae0\\\\Desktop\\\\project\\\\REP-Engine\\\\docker\"\")",
+      "Bash(dir \"C:\\\\Users\\\\chae0\\\\Desktop\\\\project\\\\REP-Engine\")",
+      "Bash(ls -la \"C:\\\\Users\\\\chae0\\\\Desktop\\\\project\\\\REP-Engine\\\\docs\"\" 2>&1 || echo \"Checking docs folder... \")",
+      "Bash(dir:*)",
+      "Bash(C:)",
+      "Bash(gradlew.bat build:*)"
     ]
   }
 }

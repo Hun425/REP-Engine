@@ -3,6 +3,8 @@ package com.rep.consumer.repository
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.rep.model.UserPreferenceData
+import com.rep.model.UserPreferenceDocument
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,9 +149,9 @@ class UserPreferenceRepository(
         try {
             val document = mapOf(
                 "userId" to userId,
-                "preferenceVector" to vector.toList(),
+                "vector" to vector.toList(),
                 "actionCount" to actionCount,
-                "lastUpdated" to System.currentTimeMillis()
+                "updatedAt" to System.currentTimeMillis()
             )
 
             esClient.index { idx ->
@@ -179,7 +181,7 @@ class UserPreferenceRepository(
 
             if (response.found()) {
                 val source = response.source()
-                val vector = source?.preferenceVector?.map { it.toFloat() }?.toFloatArray()
+                val vector = source?.vector?.toFloatArray()
                 val actionCount = source?.actionCount ?: 1
 
                 vector?.let { Pair(it, actionCount) }
@@ -192,24 +194,3 @@ class UserPreferenceRepository(
         }
     }
 }
-
-/**
- * Redis에 저장되는 유저 취향 데이터
- */
-data class UserPreferenceData(
-    val vector: List<Float>,
-    val actionCount: Int = 1,
-    val updatedAt: Long = System.currentTimeMillis()
-) {
-    fun toFloatArray(): FloatArray = vector.toFloatArray()
-}
-
-/**
- * ES user_preference_index 문서 구조
- */
-data class UserPreferenceDocument(
-    val userId: String? = null,
-    val preferenceVector: List<Double>? = null,
-    val actionCount: Int? = null,
-    val lastUpdated: Long? = null
-)

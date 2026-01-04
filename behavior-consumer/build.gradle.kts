@@ -12,8 +12,9 @@ java {
 }
 
 dependencies {
-    // Common Avro (스키마 공유)
+    // Common 모듈
     implementation(project(":common-avro"))
+    implementation(project(":common-model"))
 
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter")

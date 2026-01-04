@@ -2,8 +2,18 @@ spring:
   application:
     name: recommendation-api
 
+  threads:
+    virtual:
+      enabled: true  # ADR-001: Virtual Threads 활성화
+
   jackson:
     default-property-inclusion: non_null
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
 
 # Elasticsearch
 elasticsearch:
@@ -11,19 +21,15 @@ elasticsearch:
   port: ${ELASTICSEARCH_PORT:9200}
   scheme: ${ELASTICSEARCH_SCHEME:http}
 
-# Redis (유저 취향 벡터 조회)
-spring.data.redis:
-  host: ${REDIS_HOST:localhost}
-  port: ${REDIS_PORT:6379}
-  timeout: 2000ms
-
 # 추천 설정
 recommendation:
   knn:
     k: ${RECOMMENDATION_K:10}
-    num-candidates: ${RECOMMENDATION_NUM_CANDIDATES:100}
+    # num-candidates: k * 10으로 동적 계산됨 (docs/phase 3.md 참고)
   cache:
     popular-ttl-minutes: ${RECOMMENDATION_CACHE_TTL:10}
+    global-cache-size: ${RECOMMENDATION_GLOBAL_CACHE_SIZE:100}
+    category-cache-size: ${RECOMMENDATION_CATEGORY_CACHE_SIZE:50}
 
 # Server
 server:

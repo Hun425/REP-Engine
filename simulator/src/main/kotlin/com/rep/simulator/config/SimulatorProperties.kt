@@ -17,5 +17,8 @@ data class SimulatorProperties(
     @field:NotBlank(message = "topic must not be blank")
     val topic: String = "user.action.v1",
 
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+
+    @field:Positive(message = "productCountPerCategory must be positive")
+    val productCountPerCategory: Int = 100
 )

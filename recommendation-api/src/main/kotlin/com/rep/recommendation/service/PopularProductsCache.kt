@@ -5,7 +5,7 @@ import co.elastic.clients.json.JsonData
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.rep.recommendation.config.RecommendationProperties
-import com.rep.recommendation.model.ProductDocument
+import com.rep.model.ProductDocument
 import com.rep.recommendation.model.ProductRecommendation
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingleOrNull
@@ -57,7 +57,7 @@ class PopularProductsCache(
 
         // 2. ES에서 조회
         log.debug { "Cache miss for global popular products, querying ES" }
-        val products = queryPopularProducts(category = null, limit = 100)
+        val products = queryPopularProducts(category = null, limit = properties.cache.globalCacheSize)
 
         // 3. Redis에 캐싱
         if (products.isNotEmpty()) {
@@ -89,7 +89,7 @@ class PopularProductsCache(
 
         // 2. ES에서 조회
         log.debug { "Cache miss for category=$category popular products, querying ES" }
-        val products = queryPopularProducts(category = category, limit = 50)
+        val products = queryPopularProducts(category = category, limit = properties.cache.categoryCacheSize)
 
         // 3. Redis에 캐싱
         if (products.isNotEmpty()) {

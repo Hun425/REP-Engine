@@ -12,6 +12,9 @@ java {
 }
 
 dependencies {
+    // Common 모듈
+    implementation(project(":common-model"))
+
     // Spring Boot Web
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")

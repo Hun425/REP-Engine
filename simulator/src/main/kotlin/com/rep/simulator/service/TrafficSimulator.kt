@@ -79,7 +79,10 @@ class TrafficSimulator(
                 async {
                     activeSessionCount.incrementAndGet()
                     try {
-                        val session = UserSession("USER-${i.toString().padStart(6, '0')}")
+                        val session = UserSession(
+                            userId = "USER-${i.toString().padStart(6, '0')}",
+                            productCountPerCategory = properties.productCountPerCategory
+                        )
                         runUserSession(session, delayMillis)
                     } finally {
                         activeSessionCount.decrementAndGet()

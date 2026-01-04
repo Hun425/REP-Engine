@@ -24,11 +24,20 @@ private val log = KotlinLogging.logger {}
 class PreferenceVectorCalculator {
 
     companion object {
-        // EMA 가중치 (Phase 3 문서 기준)
-        const val ALPHA_VIEW = 0.1f
-        const val ALPHA_SEARCH = 0.2f   // 검색은 중간 정도의 관심 신호
-        const val ALPHA_CLICK = 0.3f
-        const val ALPHA_PURCHASE = 0.5f
+        // EMA 가중치 (CLAUDE.md 및 Phase 3 문서 기준)
+        // 강한 신호
+        const val ALPHA_PURCHASE = 0.5f       // 구매: 가장 강한 관심 신호
+
+        // 중간 강도 신호
+        const val ALPHA_ADD_TO_CART = 0.3f    // 장바구니: 구매 의도가 있는 강한 신호
+        const val ALPHA_CLICK = 0.3f          // 클릭: 적극적인 관심
+
+        // 중간 신호
+        const val ALPHA_SEARCH = 0.2f         // 검색: 탐색 의도
+
+        // 약한 신호
+        const val ALPHA_VIEW = 0.1f           // 조회: 수동적 노출
+        const val ALPHA_WISHLIST = 0.1f       // 위시리스트: 나중을 위한 저장
 
         // 벡터 차원 (multilingual-e5-base)
         const val EXPECTED_VECTOR_DIMENSIONS = 384
@@ -111,11 +120,11 @@ class PreferenceVectorCalculator {
     private fun getAlpha(actionType: String): Float {
         return when (actionType.uppercase()) {
             "VIEW" -> ALPHA_VIEW
-            "SEARCH" -> ALPHA_SEARCH      // 검색은 VIEW와 CLICK 사이
+            "SEARCH" -> ALPHA_SEARCH
             "CLICK" -> ALPHA_CLICK
             "PURCHASE" -> ALPHA_PURCHASE
-            "ADD_TO_CART" -> ALPHA_CLICK  // 장바구니 추가는 클릭과 동일
-            "WISHLIST" -> ALPHA_VIEW      // 위시리스트는 조회와 동일
+            "ADD_TO_CART" -> ALPHA_ADD_TO_CART
+            "WISHLIST" -> ALPHA_WISHLIST
             else -> {
                 log.warn { "Unknown actionType: $actionType, skipping preference update (alpha=0)" }
                 0.0f

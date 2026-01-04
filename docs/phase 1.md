@@ -6,14 +6,14 @@
 
 코틀린의 비동기 성능을 극대화하기 위해 `Coroutines`와 `Spring Kafka`를 조합합니다.
 
-```
+```kotlin
 dependencies {
     implementation("org.springframework.kafka:spring-kafka")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
     implementation("io.confluent:kafka-avro-serializer:7.5.0")
     implementation("org.apache.avro:avro:1.11.3")
-    implementation("io.github.serpro69:kotlin-faker:1.15.0") // 가짜 데이터 생성용
+    // 데이터 생성은 Kotlin Random 사용
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
@@ -26,9 +26,9 @@ plugins {
 
 실무에서는 데이터 포맷 변경에 유연하게 대응하기 위해 공통 인터페이스나 스키마를 정의합니다.
 
-```
+```kotlin
 enum class ActionType {
-    VIEW, CLICK, SEARCH, PURCHASE, ADD_TO_CART
+    VIEW, CLICK, SEARCH, PURCHASE, ADD_TO_CART, WISHLIST
 }
 
 data class UserActionEvent(
@@ -59,20 +59,55 @@ data class UserActionEvent(
 
 각 유저는 고유한 특성(예: 특정 카테고리 선호)을 가지며, 이를 통해 데이터의 편향성을 시뮬레이션합니다.
 
-```
+```kotlin
 class UserSession(val userId: String) {
-    private val preferredCategory = listOf("ELECTRONICS", "FASHION", "FOOD").random()
+    companion object {
+        private val CATEGORIES = listOf(
+            "ELECTRONICS", "FASHION", "FOOD", "BEAUTY",
+            "SPORTS", "HOME", "BOOKS"
+        )
 
-    fun nextAction(): UserActionEvent {
-        // 70% 확률로 선호 카테고리 상품 선택 (데이터 편향성 생성)
-        val category = if (Random.nextDouble() < 0.7) preferredCategory else "OTHERS"
-        return UserActionEvent(
-            userId = userId,
-            productId = "PROD-${Random.nextInt(1000)}",
-            category = category,
-            actionType = ActionType.values().random()
+        // 가중치 기반 행동 분포 (실제 서비스 패턴 반영)
+        private val ACTION_WEIGHTS = mapOf(
+            ActionType.VIEW to 45,        // 45% - 가장 빈번
+            ActionType.CLICK to 25,       // 25% - 관심 표현
+            ActionType.SEARCH to 10,      // 10% - 검색
+            ActionType.ADD_TO_CART to 8,  // 8% - 장바구니
+            ActionType.PURCHASE to 5,     // 5% - 구매 (가장 드묾)
+            ActionType.WISHLIST to 7      // 7% - 위시리스트
         )
     }
+
+    private val preferredCategory = CATEGORIES.random()
+
+    fun nextAction(): UserActionEvent {
+        val category = selectCategory()
+        val productId = selectProduct(category)
+        val actionType = selectActionType()
+
+        return UserActionEvent.newBuilder()
+            .setUserId(userId)
+            .setProductId(productId)
+            .setCategory(category)
+            .setActionType(actionType)
+            .build()
+    }
+
+    // 70% 확률로 선호 카테고리 선택
+    private fun selectCategory(): String {
+        return if (Random.nextDouble() < 0.7) preferredCategory
+               else CATEGORIES.filter { it != preferredCategory }.random()
+    }
+
+    // 상품 ID 형식: PROD-{카테고리3자}-{순번5자리}
+    // seed_products.py와 일치하도록 설계
+    private fun selectProduct(category: String): String {
+        val productNum = Random.nextInt(1, 101)
+        return "PROD-${category.take(3)}-${productNum.toString().padStart(5, '0')}"
+    }
+
+    // ACTION_WEIGHTS 기반 가중치 랜덤 선택
+    private fun selectActionType(): ActionType { /* ... */ }
 }
 ```
 

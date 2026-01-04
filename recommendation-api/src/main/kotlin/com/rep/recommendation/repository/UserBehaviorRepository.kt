@@ -1,6 +1,7 @@
 package com.rep.recommendation.repository
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient
+import co.elastic.clients.elasticsearch._types.FieldValue
 import co.elastic.clients.elasticsearch._types.SortOrder
 import co.elastic.clients.json.JsonData
 import mu.KotlinLogging
@@ -38,6 +39,14 @@ class UserBehaviorRepository(
                         q.bool { b ->
                             b.must { m ->
                                 m.term { t -> t.field("userId").value(userId) }
+                            }
+                            // VIEW, CLICK만 조회 (구매한 상품은 재구매 추천을 위해 제외하지 않음)
+                            b.must { m ->
+                                m.terms { t ->
+                                    t.field("actionType").terms { tv ->
+                                        tv.value(listOf(FieldValue.of("VIEW"), FieldValue.of("CLICK")))
+                                    }
+                                }
                             }
                             // 최근 7일 이내
                             b.must { m ->

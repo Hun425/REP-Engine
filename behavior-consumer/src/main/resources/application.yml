@@ -2,6 +2,12 @@ spring:
   application:
     name: behavior-consumer
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -33,12 +39,6 @@ elasticsearch:
   index:
     user-behavior: user_behavior_index
 
-# Redis (Phase 3: 유저 취향 벡터 저장)
-spring.data.redis:
-  host: ${REDIS_HOST:localhost}
-  port: ${REDIS_PORT:6379}
-  timeout: 2000ms
-
 # Embedding Service (Phase 3)
 embedding:
   service:
@@ -54,6 +54,7 @@ consumer:
   concurrency: ${CONSUMER_CONCURRENCY:3}
   max-retries: ${CONSUMER_MAX_RETRIES:3}
   retry-delay-ms: ${CONSUMER_RETRY_DELAY_MS:1000}
+  vector-dimensions: 384  # multilingual-e5-base 모델 출력 차원
 
 # Actuator
 management:

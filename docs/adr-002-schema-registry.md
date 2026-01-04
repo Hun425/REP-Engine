@@ -162,7 +162,7 @@ src/main/avro/
       "type": {
         "type": "enum",
         "name": "ActionType",
-        "symbols": ["VIEW", "CLICK", "SEARCH", "PURCHASE", "ADD_TO_CART"]
+        "symbols": ["VIEW", "CLICK", "SEARCH", "PURCHASE", "ADD_TO_CART", "WISHLIST"]
       },
       "doc": "유저 행동 유형"
     },

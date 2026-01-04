@@ -72,12 +72,13 @@
 
 ### 3.1 `product_index` 매핑
 
+> **Note:** Elasticsearch 8.x에서는 `dense_vector` 필드에 `index: true`를 설정하면 자동으로 KNN 검색이 활성화됩니다. 별도의 `index.knn: true` 설정은 불필요합니다.
+
 ```json
 {
   "settings": {
     "number_of_shards": 1,
-    "number_of_replicas": 0,
-    "index.knn": true
+    "number_of_replicas": 0
   },
   "mappings": {
     "properties": {
@@ -562,6 +563,7 @@ class UserPreferenceRepository(
 
 data class UserPreferenceData(
     val vector: List<Float>,
+    val actionCount: Int = 1,
     val updatedAt: Long
 )
 ```

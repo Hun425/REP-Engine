@@ -12,6 +12,7 @@ plugins {
 rootProject.name = "REP-Engine"
 
 include(":common-avro")
+include(":common-model")
 include(":simulator")
 include(":behavior-consumer")
 include(":recommendation-api")

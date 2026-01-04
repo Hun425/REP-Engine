@@ -11,6 +11,15 @@
 - **Cache:** Redis 7.2+
 - **Embedding:** multilingual-e5-base (384 dims)
 
+## 프로젝트 구조 (모듈)
+| 모듈 | 용도 |
+|-----|------|
+| `common-avro` | Kafka 메시지 스키마 (Avro) |
+| `common-model` | ES 문서 + Redis 데이터 모델 (공유) |
+| `simulator` | 트래픽 시뮬레이터 (Phase 1) |
+| `behavior-consumer` | Kafka Consumer, ES Indexing, 취향 벡터 갱신 (Phase 2) |
+| `recommendation-api` | 추천 API (Phase 3) |
+
 ## 문서 구조 (docs/)
 
 ### 필수 참고 문서
@@ -81,8 +90,8 @@
 - flushInterval: 1초
 
 ### KNN 검색
-- k: 10
-- num_candidates: 100
+- k: 10 (기본값)
+- num_candidates: k * 10 (동적 계산)
 - similarity: cosine
 
 ## 문서 최신화 규칙

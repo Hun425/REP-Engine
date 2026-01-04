@@ -2,6 +2,7 @@ package com.rep.consumer.repository
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.elasticsearch.core.GetResponse
+import com.rep.model.ProductDocument
 import mu.KotlinLogging
 import org.springframework.stereotype.Repository
 
@@ -37,7 +38,7 @@ class ProductVectorRepository(
             )
 
             if (response.found()) {
-                val vector = response.source()?.productVector?.map { it.toFloat() }?.toFloatArray()
+                val vector = response.source()?.productVector?.toFloatArray()
 
                 // 벡터 차원 검증
                 if (vector != null && vector.size != EXPECTED_DIMENSIONS) {
@@ -76,7 +77,7 @@ class ProductVectorRepository(
                 .mapNotNull { doc ->
                     val id = doc.result()?.id() ?: return@mapNotNull null
                     val source = doc.result()?.source()
-                    val vector = source?.productVector?.map { it.toFloat() }?.toFloatArray()
+                    val vector = source?.productVector?.toFloatArray()
 
                     // 벡터 차원 검증
                     if (vector != null && vector.size != EXPECTED_DIMENSIONS) {
@@ -95,19 +96,3 @@ class ProductVectorRepository(
         }
     }
 }
-
-/**
- * Elasticsearch product_index 문서 구조
- */
-data class ProductDocument(
-    val productId: String? = null,
-    val productName: String? = null,
-    val category: String? = null,
-    val price: Float? = null,
-    val stock: Int? = null,
-    val brand: String? = null,
-    val description: String? = null,
-    val productVector: List<Double>? = null,  // ES에서는 double로 저장됨
-    val createdAt: String? = null,
-    val updatedAt: String? = null
-)

@@ -4,7 +4,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.elasticsearch._types.query_dsl.Query
 import co.elastic.clients.json.JsonData
 import com.rep.recommendation.config.RecommendationProperties
-import com.rep.recommendation.model.ProductDocument
+import com.rep.model.ProductDocument
 import com.rep.recommendation.model.ProductRecommendation
 import com.rep.recommendation.model.RecommendationResponse
 import com.rep.recommendation.repository.UserBehaviorRepository
@@ -175,7 +175,7 @@ class RecommendationService(
                         knn.field("productVector")
                             .queryVector(queryVectorList)
                             .k(k.toLong())
-                            .numCandidates(properties.knn.numCandidates.toLong())
+                            .numCandidates((k * 10).toLong())  // 문서 권장: num_candidates = k * 10
                             .filter(filterQueries)
                     }
                     .source { src ->
