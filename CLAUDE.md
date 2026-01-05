@@ -19,6 +19,7 @@
 | `simulator` | 트래픽 시뮬레이터 (Phase 1) |
 | `behavior-consumer` | Kafka Consumer, ES Indexing, 취향 벡터 갱신 (Phase 2) |
 | `recommendation-api` | 추천 API (Phase 3) |
+| `notification-service` | 가격/재고 변동 감지, 알림 발송 (Phase 4) |
 
 ## 문서 구조 (docs/)
 

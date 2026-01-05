@@ -1,0 +1,59 @@
+{
+  "type": "record",
+  "name": "ProductInventoryEvent",
+  "namespace": "com.rep.event.product",
+  "doc": "상품 재고/가격 변동 이벤트",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "이벤트 고유 ID"
+    },
+    {
+      "name": "productId",
+      "type": "string",
+      "doc": "상품 고유 식별자"
+    },
+    {
+      "name": "eventType",
+      "type": {
+        "type": "enum",
+        "name": "InventoryEventType",
+        "symbols": ["PRICE_CHANGE", "STOCK_CHANGE", "PRODUCT_UPDATE"]
+      },
+      "doc": "이벤트 유형"
+    },
+    {
+      "name": "previousPrice",
+      "type": ["null", "float"],
+      "default": null,
+      "doc": "변경 전 가격"
+    },
+    {
+      "name": "currentPrice",
+      "type": ["null", "float"],
+      "default": null,
+      "doc": "변경 후 가격"
+    },
+    {
+      "name": "previousStock",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "변경 전 재고"
+    },
+    {
+      "name": "currentStock",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "변경 후 재고"
+    },
+    {
+      "name": "timestamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "이벤트 발생 시각 (epoch millis)"
+    }
+  ]
+}

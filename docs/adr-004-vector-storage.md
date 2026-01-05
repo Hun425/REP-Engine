@@ -115,7 +115,7 @@ TTL: 86400 (24시간)
 
 예시:
 KEY: user:preference:U12345
-VALUE: {"vector": [0.12, -0.45, 0.78, ...], "updatedAt": 1704067200000}
+VALUE: {"preferenceVector": [0.12, -0.45, 0.78, ...], "actionCount": 1, "updatedAt": 1704067200000}
 ```
 
 ### Redis 구현 (Kotlin)
@@ -129,13 +129,15 @@ class UserPreferenceRepository(
     private val keyPrefix = "user:preference:"
     private val ttl = Duration.ofHours(24)
 
-    suspend fun save(userId: String, vector: FloatArray) {
+    suspend fun save(userId: String, vector: FloatArray, actionCount: Int = 1) {
         val key = "$keyPrefix$userId"
-        val value = objectMapper.writeValueAsString(
-            UserPreference(vector.toList(), System.currentTimeMillis())
+        val data = UserPreferenceData(
+            preferenceVector = vector.toList(),
+            actionCount = actionCount,
+            updatedAt = System.currentTimeMillis()
         )
         redisTemplate.opsForValue()
-            .set(key, value, ttl)
+            .set(key, objectMapper.writeValueAsString(data), ttl)
             .awaitSingle()
     }
 
@@ -144,25 +146,13 @@ class UserPreferenceRepository(
         return redisTemplate.opsForValue()
             .get(key)
             .awaitSingleOrNull()
-            ?.let { objectMapper.readValue<UserPreference>(it).vector.toFloatArray() }
-    }
-
-    suspend fun getMultiple(userIds: List<String>): Map<String, FloatArray> {
-        val keys = userIds.map { "$keyPrefix$it" }
-        return redisTemplate.opsForValue()
-            .multiGet(keys)
-            .awaitSingle()
-            .mapIndexedNotNull { index, value ->
-                value?.let {
-                    userIds[index] to objectMapper.readValue<UserPreference>(it).vector.toFloatArray()
-                }
-            }
-            .toMap()
+            ?.let { objectMapper.readValue<UserPreferenceData>(it).preferenceVector.toFloatArray() }
     }
 }
 
-data class UserPreference(
-    val vector: List<Float>,
+data class UserPreferenceData(
+    val preferenceVector: List<Float>,
+    val actionCount: Int = 1,
     val updatedAt: Long
 )
 ```
@@ -173,7 +163,7 @@ data class UserPreference(
 PUT /user_preference_index
 {
   "settings": {
-    "number_of_shards": 3,
+    "number_of_shards": 1,
     "number_of_replicas": 0,
     "refresh_interval": "60s"
   },
@@ -186,7 +176,7 @@ PUT /user_preference_index
         "index": false
       },
       "actionCount": { "type": "integer" },
-      "lastUpdated": { "type": "date" }
+      "updatedAt": { "type": "date" }
     }
   }
 }

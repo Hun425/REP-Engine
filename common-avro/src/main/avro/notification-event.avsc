@@ -1,0 +1,79 @@
+{
+  "type": "record",
+  "name": "NotificationEvent",
+  "namespace": "com.rep.event.notification",
+  "doc": "알림 발송 이벤트",
+  "fields": [
+    {
+      "name": "notificationId",
+      "type": "string",
+      "doc": "알림 고유 ID"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "대상 유저 ID"
+    },
+    {
+      "name": "productId",
+      "type": "string",
+      "doc": "관련 상품 ID"
+    },
+    {
+      "name": "notificationType",
+      "type": {
+        "type": "enum",
+        "name": "NotificationType",
+        "symbols": ["PRICE_DROP", "BACK_IN_STOCK", "RECOMMENDATION"]
+      },
+      "doc": "알림 유형"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "doc": "알림 제목"
+    },
+    {
+      "name": "body",
+      "type": "string",
+      "doc": "알림 본문"
+    },
+    {
+      "name": "data",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "추가 데이터 (가격 변동률, 재고 수량 등)"
+    },
+    {
+      "name": "channels",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "enum",
+          "name": "Channel",
+          "symbols": ["PUSH", "SMS", "EMAIL", "IN_APP"]
+        }
+      },
+      "doc": "발송 채널 목록"
+    },
+    {
+      "name": "priority",
+      "type": {
+        "type": "enum",
+        "name": "Priority",
+        "symbols": ["LOW", "NORMAL", "HIGH"]
+      },
+      "doc": "알림 우선순위"
+    },
+    {
+      "name": "timestamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "알림 생성 시각"
+    }
+  ]
+}

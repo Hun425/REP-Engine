@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.rep.model.UserPreferenceData
 import com.rep.model.UserPreferenceDocument
+import io.micrometer.core.instrument.Counter
+import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import mu.KotlinLogging
 import org.springframework.data.redis.core.ReactiveRedisTemplate
@@ -24,13 +26,26 @@ private val log = KotlinLogging.logger {}
 class UserPreferenceRepository(
     private val redisTemplate: ReactiveRedisTemplate<String, String>,
     private val esClient: ElasticsearchClient,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    meterRegistry: MeterRegistry
 ) {
     companion object {
         private const val KEY_PREFIX = "user:preference:"
         private const val ES_INDEX = "user_preference_index"
         private val TTL = Duration.ofHours(24)
     }
+
+    private val cacheHitCounter = Counter.builder("preference.cache.hit")
+        .description("User preference cache hits")
+        .register(meterRegistry)
+
+    private val cacheMissCounter = Counter.builder("preference.cache.miss")
+        .description("User preference cache misses")
+        .register(meterRegistry)
+
+    private val esFallbackCounter = Counter.builder("preference.es.fallback")
+        .description("ES fallback for user preference")
+        .register(meterRegistry)
 
     /**
      * 유저 취향 벡터를 조회합니다.
@@ -50,14 +65,22 @@ class UserPreferenceRepository(
 
             if (cached != null) {
                 log.debug { "Cache hit for userId=$userId" }
+                cacheHitCounter.increment()
                 objectMapper.readValue<UserPreferenceData>(cached).toFloatArray()
             } else {
                 // 2. Redis 미스 → ES에서 폴백
                 log.debug { "Cache miss for userId=$userId, trying ES fallback" }
-                getFromEs(userId)?.also { (vector, actionCount) ->
+                cacheMissCounter.increment()
+                val esResult = getFromEs(userId)
+                if (esResult != null) {
+                    esFallbackCounter.increment()
+                    val (vector, actionCount) = esResult
                     // Redis에 캐싱하여 다음 조회 시 성능 향상
                     cacheToRedis(userId, vector, actionCount)
-                }?.first
+                    vector
+                } else {
+                    null
+                }
             }
         } catch (e: Exception) {
             log.error(e) { "Failed to get preference vector for userId=$userId" }

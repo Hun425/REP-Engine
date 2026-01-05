@@ -280,15 +280,16 @@ class DlqProducer(
 ) {
     private val dlqTopic = "user.action.v1.dlq"
 
-    fun send(event: UserActionEvent) {
-        kafkaTemplate.send(dlqTopic, event.userId, event)
-            .whenComplete { _, ex ->
-                if (ex != null) {
-                    log.error("Failed to send to DLQ", ex)
-                    // 최후의 수단: 로컬 파일에 기록
-                    FileUtils.appendToFile("failed_events.log", event.toString())
-                }
-            }
+    fun sendSync(event: UserActionEvent): Boolean {
+        return try {
+            kafkaTemplate.send(dlqTopic, event.userId.toString(), event).get()
+            true
+        } catch (e: Exception) {
+            log.error("Failed to send to DLQ", e)
+            // 최후의 수단: 로컬 파일에 기록
+            writeToFailedEventsFile(event)
+            false
+        }
     }
 }
 ```

@@ -51,6 +51,22 @@ class RecommendationService(
         .tag("type", "popularity")
         .register(meterRegistry)
 
+    private val categoryBestCounter = Counter.builder("recommendation.strategy")
+        .tag("type", "category_best")
+        .register(meterRegistry)
+
+    private val knnFailedCounter = Counter.builder("recommendation.knn.failed")
+        .description("KNN search failures")
+        .register(meterRegistry)
+
+    private val fallbackUsedCounter = Counter.builder("recommendation.fallback.used")
+        .description("Fallback to popular products due to error")
+        .register(meterRegistry)
+
+    private val emptyResultCounter = Counter.builder("recommendation.result.empty")
+        .description("Empty recommendation results")
+        .register(meterRegistry)
+
     /**
      * 유저에게 개인화된 상품을 추천합니다.
      *
@@ -74,16 +90,25 @@ class RecommendationService(
 
             latencyTimer.record(latencyMs, TimeUnit.MILLISECONDS)
 
+            if (result.recommendations.isEmpty()) {
+                emptyResultCounter.increment()
+            }
+
             result.copy(latencyMs = latencyMs)
 
         } catch (e: Exception) {
             log.error(e) { "Failed to get recommendations for userId=$userId" }
+            fallbackUsedCounter.increment()
 
             // 에러 발생 시에도 인기 상품이라도 반환
             val fallbackProducts = try {
                 popularProductsCache.getTopProducts(limit)
             } catch (e2: Exception) {
                 emptyList()
+            }
+
+            if (fallbackProducts.isEmpty()) {
+                emptyResultCounter.increment()
             }
 
             RecommendationResponse(
@@ -107,9 +132,15 @@ class RecommendationService(
         // 2. 전략 결정 및 추천 실행
         val (products, strategy) = if (preferenceVector == null) {
             // Cold Start: 인기 상품 반환
-            log.debug { "Cold start for userId=$userId, using popularity strategy" }
-            popularityCounter.increment()
-            Pair(getColdStartRecommendations(limit, category), "popularity")
+            if (category != null) {
+                log.debug { "Cold start with category filter for userId=$userId, using category_best strategy" }
+                categoryBestCounter.increment()
+                Pair(getColdStartRecommendations(limit, category), "category_best")
+            } else {
+                log.debug { "Cold start for userId=$userId, using popularity strategy" }
+                popularityCounter.increment()
+                Pair(getColdStartRecommendations(limit, category), "popularity")
+            }
         } else {
             // KNN 검색
             log.debug { "Using KNN strategy for userId=$userId" }
@@ -199,6 +230,7 @@ class RecommendationService(
 
         } catch (e: Exception) {
             log.error(e) { "KNN search failed" }
+            knnFailedCounter.increment()
             emptyList()
         }
     }

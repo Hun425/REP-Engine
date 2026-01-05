@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: notification-service
+
+  # Kafka
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-consumer-group
+      properties:
+        schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    producer:
+      properties:
+        schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+
+  # Elasticsearch
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+
+  # Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+# Notification Service Settings
+notification:
+  # 가격 하락 알림 임계값 (%) - 이 비율 이상 하락 시 알림
+  price-drop-threshold: ${PRICE_DROP_THRESHOLD:10}
+
+  # 알림 대상 유저 조회 설정
+  target-user-limit: ${TARGET_USER_LIMIT:10000}
+  interested-user-days: ${INTERESTED_USER_DAYS:30}
+  cart-user-days: ${CART_USER_DAYS:7}
+
+  # Rate Limiting
+  daily-limit-per-user: ${DAILY_LIMIT_PER_USER:10}
+  duplicate-prevention-hours: ${DUPLICATE_PREVENTION_HOURS:1}
+
+  # Kafka Topics
+  inventory-topic: ${INVENTORY_TOPIC:product.inventory.v1}
+  notification-topic: ${NOTIFICATION_TOPIC:notification.push.v1}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Logging
+logging:
+  level:
+    com.rep.notification: ${LOG_LEVEL:INFO}
+    org.apache.kafka: WARN
+    org.elasticsearch: WARN
+
+# Server
+server:
+  port: ${SERVER_PORT:8083}

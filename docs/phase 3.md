@@ -172,9 +172,15 @@ Response:
     },
     ...
   ],
-  "strategy": "knn",  // knn | popularity | category_best
+  "strategy": "knn",  // knn | popularity | category_best | fallback
   "latencyMs": 45
 }
+
+> **Note:** `strategy` 필드 값:
+> - `knn`: 유저 취향 벡터 기반 KNN 검색
+> - `popularity`: Cold Start 유저 - 전체 인기 상품
+> - `category_best`: Cold Start 유저 - 카테고리별 인기 상품
+> - `fallback`: 시스템 오류 시 인기 상품으로 폴백
 ```
 
 ### 4.2 Service 구현
@@ -516,10 +522,11 @@ class UserPreferenceRepository(
     private val keyPrefix = "user:preference:"
     private val ttl = Duration.ofHours(24)
 
-    suspend fun save(userId: String, vector: FloatArray) {
+    suspend fun save(userId: String, vector: FloatArray, actionCount: Int = 1) {
         val key = "$keyPrefix$userId"
         val data = UserPreferenceData(
-            vector = vector.toList(),
+            preferenceVector = vector.toList(),
+            actionCount = actionCount,
             updatedAt = System.currentTimeMillis()
         )
 
@@ -538,7 +545,7 @@ class UserPreferenceRepository(
         // 1. Redis에서 조회
         val cached = redisTemplate.opsForValue().get(key).awaitSingleOrNull()
         if (cached != null) {
-            return objectMapper.readValue<UserPreferenceData>(cached).vector.toFloatArray()
+            return objectMapper.readValue<UserPreferenceData>(cached).preferenceVector.toFloatArray()
         }
 
         // 2. Redis 미스 → ES에서 복구 시도
@@ -562,7 +569,7 @@ class UserPreferenceRepository(
 }
 
 data class UserPreferenceData(
-    val vector: List<Float>,
+    val preferenceVector: List<Float>,
     val actionCount: Int = 1,
     val updatedAt: Long
 )
