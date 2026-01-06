@@ -113,12 +113,12 @@ class UserSession(
     companion object {
         val CATEGORIES = listOf("ELECTRONICS", "FASHION", "HOME", "BEAUTY", "SPORTS", "FOOD", "BOOKS")
         val ACTION_WEIGHTS = mapOf(
-            "VIEW" to 45,          // 45% 확률로 그냥 봄
-            "CLICK" to 25,         // 25% 확률로 클릭
-            "SEARCH" to 10,        // 10% 확률로 검색
-            "PURCHASE" to 8,       // 8% 확률로 구매
-            "ADD_TO_CART" to 7,    // 7% 확률로 장바구니
-            "WISHLIST" to 5        // 5% 확률로 찜
+            ActionType.VIEW to 45,        // 45% - 가장 빈번
+            ActionType.CLICK to 25,       // 25% - 관심 표현
+            ActionType.SEARCH to 10,      // 10% - 검색
+            ActionType.ADD_TO_CART to 8,  // 8% - 장바구니
+            ActionType.PURCHASE to 5,     // 5% - 구매 (가장 드묾)
+            ActionType.WISHLIST to 7      // 7% - 위시리스트
         )
     }
 
@@ -127,7 +127,9 @@ class UserSession(
         val category = CATEGORIES.random()
 
         // 2. 어떤 상품을 볼지 랜덤 선택
-        val productId = "${category}-${Random.nextInt(productCountPerCategory)}"
+        // 형식: PROD-{카테고리3글자}-{00001~productCountPerCategory}
+        val productNum = Random.nextInt(1, productCountPerCategory + 1)
+        val productId = "PROD-${category.take(3)}-${productNum.toString().padStart(5, '0')}"
 
         // 3. 어떤 행동을 할지 확률에 따라 선택
         val actionType = selectAction()  // VIEW 45%, CLICK 25%, ...
@@ -150,9 +152,9 @@ class UserSession(
 VIEW: 45번 (그냥 봄)
 CLICK: 25번 (클릭)
 SEARCH: 10번 (검색)
-PURCHASE: 8번 (구매)
-ADD_TO_CART: 7번 (장바구니)
-WISHLIST: 5번 (찜)
+ADD_TO_CART: 8번 (장바구니)
+WISHLIST: 7번 (찜)
+PURCHASE: 5번 (구매)
 ```
 
 이건 실제 쇼핑몰 데이터를 참고해서 만든 비율이에요.
@@ -388,8 +390,8 @@ A: UserSession.kt의 ACTION_WEIGHTS를 수정하세요.
 
    예: 구매를 50%로 늘리고 싶다면
    val ACTION_WEIGHTS = mapOf(
-       "PURCHASE" to 50,  // 50%로 변경
-       "VIEW" to 30,
+       ActionType.PURCHASE to 50,  // 50%로 변경
+       ActionType.VIEW to 30,
        ...
    )
 ```

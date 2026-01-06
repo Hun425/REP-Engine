@@ -13,12 +13,12 @@
 | 03 | [simulator](./03-simulator.md) | simulator | 가짜 유저 행동 데이터 생성 |
 | 04 | [behavior-consumer](./04-behavior-consumer.md) | behavior-consumer | Kafka→ES 저장 + 취향 업데이트 |
 | 05 | [recommendation-api](./05-recommendation-api.md) | recommendation-api | 개인화 추천 API |
+| 06 | [notification-service](./06-notification-service.md) | notification-service | 가격 변동 감지 + 알림 발송 |
 
-### 구현 예정 (Phase 4, 5)
+### 구현 예정 (Phase 5)
 
 | 번호 | Phase | 내용 | 상태 |
 |------|-------|------|------|
-| 06 | Phase 4 | 가격 변동 감지 + 알림 발송 | 구현 후 추가 예정 |
 | 07 | Phase 5 | 모니터링 + 통합 테스트 | 구현 후 추가 예정 |
 
 ---
@@ -35,6 +35,8 @@
 4. behavior-consumer (데이터가 어떻게 처리되는지)
        ↓
 5. recommendation-api (추천이 어떻게 동작하는지)
+       ↓
+6. notification-service (알림이 어떻게 발송되는지)
 ```
 
 ---
@@ -63,25 +65,44 @@
              │              │                     │              │
              │ - 행동 로그  │                     │ - 취향 벡터  │
              │ - 상품 벡터  │                     │   (캐시)     │
+             │ - 알림 이력  │                     │ - Rate Limit │
              └──────┬───────┘                     └──────┬───────┘
                     │                                    │
                     └────────────────┬───────────────────┘
                                      │
-                                     ▼
-                            ┌──────────────┐
-                            │recommendation│
-                            │   -api       │
-                            │ (Phase 3)    │
-                            │              │
-                            │ 개인화 추천  │
-                            │ API 제공     │
-                            └──────────────┘
-                                     │
-                                     ▼
-                            ┌──────────────┐
-                            │   클라이언트  │
-                            │ (웹/앱)      │
-                            └──────────────┘
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+                    ▼                ▼                ▼
+           ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+           │recommendation│ │notification- │ │   Kafka      │
+           │   -api       │ │  service     │ │   토픽:      │
+           │ (Phase 3)    │ │ (Phase 4)    │ │ product.     │
+           │              │ │              │◀│ inventory.v1 │
+           │ 개인화 추천  │ │ 가격/재입고  │ │              │
+           │ API 제공     │ │ 알림 발송    │ │ (외부 시스템)│
+           └──────┬───────┘ └──────┬───────┘ └──────────────┘
+                  │                │
+                  │                ▼
+                  │       ┌──────────────┐
+                  │       │   Kafka      │
+                  │       │   토픽:      │
+                  │       │ notification │
+                  │       │ .push.v1     │
+                  │       └──────┬───────┘
+                  │              │
+                  │              ▼
+                  │       ┌──────────────┐
+                  │       │ Push/SMS/    │
+                  │       │ Email 발송   │
+                  │       └──────┬───────┘
+                  │              │
+                  └──────┬───────┘
+                         │
+                         ▼
+                ┌──────────────┐
+                │   클라이언트  │
+                │ (웹/앱)      │
+                └──────────────┘
 ```
 
 ---
@@ -113,6 +134,11 @@
 - **왜 필요한가요?** 최종 목표! 개인화 추천 서비스 제공
 - **핵심 클래스**: `RecommendationService`, `PopularProductsCache`
 
+### notification-service
+- **뭘 하나요?** 가격 하락/재입고 시 관심 유저에게 알림 발송
+- **왜 필요한가요?** 유저 재방문 유도, 전환율 향상
+- **핵심 클래스**: `EventDetector`, `TargetResolver`, `NotificationRateLimiter`
+
 ---
 
 ## 주요 기술 용어 정리
@@ -129,6 +155,8 @@
 | TTL | 자동 삭제 시간 (Time To Live) |
 | DLQ | 실패 메시지 보관함 (Dead Letter Queue) |
 | Cold Start | 신규 유저 문제 (취향 데이터 없음) |
+| Rate Limit | 과다 요청 방지 (횟수 제한) |
+| 집계 (Aggregation) | ES에서 데이터 그룹화/통계 |
 
 ---
 

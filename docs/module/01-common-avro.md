@@ -25,9 +25,11 @@
 
 ```
 common-avro/
-├── build.gradle.kts          # 빌드 설정 파일
+├── build.gradle.kts                    # 빌드 설정 파일
 └── src/main/avro/
-    └── user-action-event.avsc # 메시지 형식 정의 파일
+    ├── user-action-event.avsc          # 유저 행동 이벤트 스키마
+    ├── product-inventory-event.avsc    # 상품 재고/가격 변동 스키마
+    └── notification-event.avsc         # 알림 발송 이벤트 스키마
 ```
 
 ---
@@ -50,8 +52,19 @@ common-avro/
     {"name": "userId", "type": "string"},
     {"name": "productId", "type": "string"},
     {"name": "category", "type": "string"},
-    {"name": "actionType", "type": "string"},
-    {"name": "metadata", "type": {"type": "map", "values": "string"}},
+    {
+      "name": "actionType",
+      "type": {
+        "type": "enum",
+        "name": "ActionType",
+        "symbols": ["VIEW", "CLICK", "SEARCH", "PURCHASE", "ADD_TO_CART", "WISHLIST"]
+      }
+    },
+    {
+      "name": "metadata",
+      "type": ["null", {"type": "map", "values": "string"}],
+      "default": null
+    },
     {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}}
   ]
 }
@@ -66,7 +79,7 @@ common-avro/
 | `productId` | 관련된 상품 ID | "ELECTRONICS-0042" |
 | `category` | 상품 카테고리 | "ELECTRONICS" |
 | `actionType` | 어떤 행동인지 | "VIEW", "CLICK", "PURCHASE" 등 |
-| `metadata` | 추가 정보 (필요할 때만) | {"searchQuery": "노트북"} |
+| `metadata` | 추가 정보 (선택, null 가능) | {"searchQuery": "노트북"} 또는 null |
 | `timestamp` | 언제 발생했는지 (밀리초 단위) | 1704067200000 |
 
 #### actionType 종류
