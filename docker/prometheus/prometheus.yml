@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'rep-engine'
+
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+scrape_configs:
+  # ============================================
+  # Spring Boot Applications
+  # ============================================
+  - job_name: 'rep-engine'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets:
+          - 'simulator:8080'
+          - 'behavior-consumer:8081'
+          - 'recommendation-api:8082'
+          - 'notification-service:8083'
+        labels:
+          group: 'applications'
+
+  # ============================================
+  # Infrastructure Exporters
+  # ============================================
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+        labels:
+          group: 'infrastructure'
+
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch-exporter:9114']
+        labels:
+          group: 'infrastructure'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          group: 'infrastructure'
+
+  # ============================================
+  # Prometheus Self-Monitoring
+  # ============================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          group: 'monitoring'

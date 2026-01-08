@@ -107,3 +107,6 @@ elasticsearch:
 embedding:
   service:
     url: http://embedding-service:8000
+
+server:
+  port: 8081
