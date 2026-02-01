@@ -13,7 +13,11 @@
       "Bash(find:*)",
       "Bash(./gradlew test:*)",
       "Bash(./gradlew :common-avro:generateAvroJava:*)",
-      "Bash(./gradlew:*)"
+      "Bash(./gradlew:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npm run build:*)",
+      "Bash(xargs:*)"
     ]
   }
 }

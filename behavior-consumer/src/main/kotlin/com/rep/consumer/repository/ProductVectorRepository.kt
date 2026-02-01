@@ -13,7 +13,7 @@ private val log = KotlinLogging.logger {}
  *
  * Elasticsearch의 product_index에서 상품 벡터를 조회합니다.
  *
- * @see docs/phase%203.md
+ * @see docs/phase%202.md
  */
 @Repository
 class ProductVectorRepository(

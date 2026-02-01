@@ -46,10 +46,11 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: ['alertmanager:9093']
+# AlertManager 미사용 (Slack 연동 제외)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
 
 rule_files:
   - '/etc/prometheus/rules/*.yml'
@@ -60,10 +61,10 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets:
-          - 'simulator:8080'
-          - 'behavior-consumer:8080'
-          - 'recommendation-api:8080'
-          - 'notification-worker:8080'
+          - 'simulator:8084'
+          - 'behavior-consumer:8081'
+          - 'recommendation-api:8082'
+          - 'notification-service:8083'
 
   # Kafka
   - job_name: 'kafka'
@@ -230,38 +231,22 @@ groups:
           summary: "{{ $labels.instance }} 애플리케이션이 다운되었습니다"
 ```
 
-### 4.2 Alertmanager 설정
+### 4.2 Alertmanager 설정 (미구현)
+
+> **Note:** AlertManager는 현재 프로젝트에서 제외되었습니다.
+> - Slack을 사용하지 않음
+> - 추후 Discord webhook 연동 시 구현 예정
 
 ```yaml
-# alertmanager.yml
-global:
-  slack_api_url: 'https://hooks.slack.com/services/xxx/xxx/xxx'
-
-route:
-  group_by: ['alertname', 'severity']
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
-  receiver: 'slack-notifications'
-
-  routes:
-    - match:
-        severity: critical
-      receiver: 'slack-critical'
-      repeat_interval: 1h
-
-receivers:
-  - name: 'slack-notifications'
-    slack_configs:
-      - channel: '#rep-engine-alerts'
-        title: '{{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
-
-  - name: 'slack-critical'
-    slack_configs:
-      - channel: '#rep-engine-critical'
-        title: '[CRITICAL] {{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+# alertmanager.yml (참고용 - 미사용)
+# Discord 연동 예시:
+# global:
+#   resolve_timeout: 5m
+#
+# receivers:
+#   - name: 'discord'
+#     discord_configs:
+#       - webhook_url: 'https://discord.com/api/webhooks/xxx/xxx'
 ```
 
 
@@ -330,26 +315,38 @@ class LoggingFilter : WebFilter {
 
 ## 6. 분산 추적 (Distributed Tracing)
 
-### 6.1 OpenTelemetry 설정
+### 6.1 Micrometer Tracing + OTLP 설정
+
+Spring Boot 3.x에서는 Micrometer Tracing을 통해 OpenTelemetry를 사용합니다.
 
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry:opentelemetry-api")
-    implementation("io.opentelemetry:opentelemetry-sdk")
-    implementation("io.opentelemetry:opentelemetry-exporter-jaeger")
-    implementation("io.opentelemetry.instrumentation:opentelemetry-kafka-clients-2.6")
+    // Micrometer Tracing + OpenTelemetry Bridge
+    implementation("io.micrometer:micrometer-tracing-bridge-otel")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
+
+    // JSON 로깅 (Loki 연동)
+    implementation("net.logstash.logback:logstash-logback-encoder:8.0")
 }
 ```
 
 ```yaml
-# application.yml
-otel:
-  exporter:
-    jaeger:
-      endpoint: http://jaeger:14250
-  service:
-    name: ${spring.application.name}
+# application.yml (로컬)
+management:
+  tracing:
+    enabled: false  # 로컬에서는 비활성화
+
+---
+# application.yml (docker 프로파일)
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0  # 100% 샘플링 (개발용)
+  otlp:
+    tracing:
+      endpoint: http://jaeger:4318/v1/traces
 ```
 
 ### 6.2 수동 Span 생성
@@ -614,15 +611,28 @@ errors.........................: 0.00%   ✓ 0     ✗ 30000
 
 ## 9. Phase 5 성공 기준 (Exit Criteria)
 
-| 기준 | 측정 방법 | 목표 |
-|-----|----------|------|
-| 메트릭 수집 | Prometheus targets UP | 100% |
-| 대시보드 | 주요 패널 데이터 표시 | 모든 패널 정상 |
-| 알림 동작 | 테스트 알림 발송 | Slack 수신 확인 |
-| 로그 조회 | Loki에서 traceId 검색 | 정상 조회 |
-| 분산 추적 | Jaeger에서 요청 추적 | 전체 경로 표시 |
-| 테스트 커버리지 | Unit + Integration | 70% 이상 |
-| 부하 테스트 | P99 레이턴시 | 100ms 이내 |
+| 기준 | 측정 방법 | 목표 | 상태 |
+|-----|----------|------|------|
+| 메트릭 수집 | Prometheus targets UP | 100% | ✅ 구현됨 |
+| 대시보드 | 주요 패널 데이터 표시 | 모든 패널 정상 | ✅ 구현됨 |
+| 알림 동작 | AlertManager 연동 | - | ⏸️ 제외됨 (Slack 미사용) |
+| 로그 조회 | Loki에서 traceId 검색 | 정상 조회 | ✅ 구현됨 |
+| 분산 추적 | Jaeger에서 요청 추적 | 전체 경로 표시 | ✅ 구현됨 |
+| 테스트 커버리지 | Unit + Integration | 70% 이상 | 🔄 진행 중 |
+| 부하 테스트 | P99 레이턴시 | 100ms 이내 | 🔄 진행 중 |
+
+### 9.1 구현된 Observability Stack
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    REP-Engine Observability                  │
+├─────────────────────────────────────────────────────────────┤
+│  ✅ Metrics: Prometheus + Grafana                           │
+│  ✅ Logs: Loki + Promtail + Grafana                         │
+│  ✅ Traces: Jaeger (OTLP) + Grafana                         │
+│  ⏸️ Alerts: AlertManager (제외됨 - Discord 연동 예정)        │
+└─────────────────────────────────────────────────────────────┘
+```
 
 
 ## 10. 관련 문서

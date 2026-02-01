@@ -42,8 +42,16 @@ class NotificationRateLimiter(
         .description("Notifications blocked due to daily limit")
         .register(meterRegistry)
 
+    private val failCloseBlockedCounter = Counter.builder("notification.rate.fail_close.blocked")
+        .description("Notifications blocked due to Redis failure (fail-close policy)")
+        .register(meterRegistry)
+
     /**
      * 동일 유저 + 동일 상품 + 동일 타입에 대해 중복 알림을 방지합니다.
+     *
+     * SETNX (setIfAbsent) 사용으로 원자적 연산을 보장합니다.
+     * - 키가 없으면: 키 설정 + true 반환 (발송 허용)
+     * - 키가 있으면: false 반환 (중복 차단)
      *
      * @param userId 유저 ID
      * @param productId 상품 ID
@@ -54,28 +62,30 @@ class NotificationRateLimiter(
         val key = "$SENT_KEY_PREFIX$userId:$productId:$notificationType"
 
         return try {
-            val exists = redisTemplate.hasKey(key).awaitSingle()
-            if (exists) {
+            // 원자적 SETNX: 키가 없으면 설정하고 true, 있으면 false
+            val wasSet = redisTemplate.opsForValue()
+                .setIfAbsent(key, "1", Duration.ofHours(properties.duplicatePreventionHours))
+                .awaitSingleOrNull() ?: false
+
+            if (!wasSet) {
                 log.debug { "Duplicate notification blocked: userId=$userId, productId=$productId, type=$notificationType" }
                 duplicateBlockedCounter.increment()
-                return false
             }
 
-            // TTL로 키 설정 (중복 방지 기간)
-            redisTemplate.opsForValue()
-                .set(key, "1", Duration.ofHours(properties.duplicatePreventionHours))
-                .awaitSingle()
-
-            true
+            wasSet
         } catch (e: Exception) {
-            log.error(e) { "Failed to check duplicate for userId=$userId" }
-            // Redis 오류 시에도 발송 허용 (fail-open)
-            true
+            log.error(e) { "Failed to check duplicate for userId=$userId (blocking - fail-close policy)" }
+            failCloseBlockedCounter.increment()
+            // Redis 오류 시 발송 차단 (fail-close)
+            false
         }
     }
 
     /**
      * 유저별 일일 알림 횟수 제한을 확인합니다.
+     *
+     * TTL Race 방지: setIfAbsent로 TTL과 함께 키 생성을 보장한 후 increment.
+     * 기존 방식(increment 후 expire)은 두 연산 사이 장애 시 TTL 없는 키가 남을 수 있음.
      *
      * @param userId 유저 ID
      * @return true면 발송 가능, false면 일일 제한 초과로 차단
@@ -84,15 +94,18 @@ class NotificationRateLimiter(
         val key = "$DAILY_KEY_PREFIX$userId"
 
         return try {
+            val ttl = calculateTtlUntilMidnight()
+
+            // 1. 키가 없으면 TTL과 함께 생성 (원자적)
+            //    키가 이미 있으면 무시됨 (기존 TTL 유지)
+            redisTemplate.opsForValue()
+                .setIfAbsent(key, "0", ttl)
+                .awaitSingleOrNull()
+
+            // 2. 카운트 증가 (항상 TTL이 설정된 상태에서 실행됨)
             val count = redisTemplate.opsForValue()
                 .increment(key)
                 .awaitSingleOrNull() ?: 1L
-
-            if (count == 1L) {
-                // 첫 알림이면 자정까지 TTL 설정
-                val ttl = calculateTtlUntilMidnight()
-                redisTemplate.expire(key, ttl).awaitSingle()
-            }
 
             if (count > properties.dailyLimitPerUser) {
                 log.debug { "Daily limit exceeded for userId=$userId, count=$count" }
@@ -102,9 +115,10 @@ class NotificationRateLimiter(
 
             true
         } catch (e: Exception) {
-            log.error(e) { "Failed to check daily limit for userId=$userId" }
-            // Redis 오류 시에도 발송 허용 (fail-open)
-            true
+            log.error(e) { "Failed to check daily limit for userId=$userId (blocking - fail-close policy)" }
+            failCloseBlockedCounter.increment()
+            // Redis 오류 시 발송 차단 (fail-close)
+            false
         }
     }
 

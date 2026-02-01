@@ -13,6 +13,9 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingleOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import mu.KotlinLogging
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Component
@@ -45,6 +48,10 @@ class PopularProductsCache(
 
     private val cacheTtl = Duration.ofMinutes(properties.cache.popularTtlMinutes)
 
+    // Thundering Herd 방지용 Mutex
+    private val globalCacheMutex = Mutex()
+    private val categoryCacheMutexMap = ConcurrentHashMap<String, Mutex>()
+
     private val cacheHitCounter = Counter.builder("popular.cache.hit")
         .description("Popular products cache hits")
         .register(meterRegistry)
@@ -56,11 +63,14 @@ class PopularProductsCache(
     /**
      * 전체 인기 상품을 조회합니다.
      *
+     * Double-check locking으로 Thundering Herd 방지:
+     * 캐시 미스 시 하나의 요청만 ES 조회, 나머지는 대기 후 캐시 재확인
+     *
      * @param limit 조회할 개수
      * @return 인기 상품 목록
      */
     suspend fun getTopProducts(limit: Int): List<ProductRecommendation> {
-        // 1. Redis 캐시 확인
+        // 1. Redis 캐시 확인 (락 없이 빠른 경로)
         val cached = redisTemplate.opsForValue().get(CACHE_KEY_GLOBAL).awaitSingleOrNull()
 
         if (cached != null) {
@@ -69,23 +79,37 @@ class PopularProductsCache(
             return objectMapper.readValue<List<ProductRecommendation>>(cached).take(limit)
         }
 
-        // 2. ES에서 조회
-        log.debug { "Cache miss for global popular products, querying ES" }
-        cacheMissCounter.increment()
-        val products = queryPopularProducts(category = null, limit = properties.cache.globalCacheSize)
+        // 2. 캐시 미스 → Mutex로 동시 ES 조회 방지
+        return globalCacheMutex.withLock {
+            // Double-check: 락 획득 후 캐시 재확인
+            val doubleCheck = redisTemplate.opsForValue().get(CACHE_KEY_GLOBAL).awaitSingleOrNull()
+            if (doubleCheck != null) {
+                log.debug { "Cache hit after lock for global popular products" }
+                cacheHitCounter.increment()
+                return@withLock objectMapper.readValue<List<ProductRecommendation>>(doubleCheck).take(limit)
+            }
 
-        // 3. Redis에 캐싱
-        if (products.isNotEmpty()) {
-            redisTemplate.opsForValue()
-                .set(CACHE_KEY_GLOBAL, objectMapper.writeValueAsString(products), cacheTtl)
-                .awaitSingle()
+            // ES에서 조회 (한 번만 실행됨)
+            log.debug { "Cache miss for global popular products, querying ES" }
+            cacheMissCounter.increment()
+            val products = queryPopularProducts(category = null, limit = properties.cache.globalCacheSize)
+
+            // Redis에 캐싱
+            if (products.isNotEmpty()) {
+                redisTemplate.opsForValue()
+                    .set(CACHE_KEY_GLOBAL, objectMapper.writeValueAsString(products), cacheTtl)
+                    .awaitSingle()
+            }
+
+            products.take(limit)
         }
-
-        return products.take(limit)
     }
 
     /**
      * 카테고리별 인기 상품을 조회합니다.
+     *
+     * Double-check locking으로 Thundering Herd 방지:
+     * 카테고리별 Mutex로 동일 카테고리 요청만 직렬화
      *
      * @param category 카테고리
      * @param limit 조회할 개수
@@ -94,7 +118,7 @@ class PopularProductsCache(
     suspend fun getCategoryBest(category: String, limit: Int): List<ProductRecommendation> {
         val cacheKey = "$CACHE_KEY_CATEGORY_PREFIX$category"
 
-        // 1. Redis 캐시 확인
+        // 1. Redis 캐시 확인 (락 없이 빠른 경로)
         val cached = redisTemplate.opsForValue().get(cacheKey).awaitSingleOrNull()
 
         if (cached != null) {
@@ -103,19 +127,32 @@ class PopularProductsCache(
             return objectMapper.readValue<List<ProductRecommendation>>(cached).take(limit)
         }
 
-        // 2. ES에서 조회
-        log.debug { "Cache miss for category=$category popular products, querying ES" }
-        cacheMissCounter.increment()
-        val products = queryPopularProducts(category = category, limit = properties.cache.categoryCacheSize)
+        // 2. 캐시 미스 → 카테고리별 Mutex로 동시 ES 조회 방지
+        val categoryMutex = categoryCacheMutexMap.computeIfAbsent(category) { Mutex() }
 
-        // 3. Redis에 캐싱
-        if (products.isNotEmpty()) {
-            redisTemplate.opsForValue()
-                .set(cacheKey, objectMapper.writeValueAsString(products), cacheTtl)
-                .awaitSingle()
+        return categoryMutex.withLock {
+            // Double-check: 락 획득 후 캐시 재확인
+            val doubleCheck = redisTemplate.opsForValue().get(cacheKey).awaitSingleOrNull()
+            if (doubleCheck != null) {
+                log.debug { "Cache hit after lock for category=$category popular products" }
+                cacheHitCounter.increment()
+                return@withLock objectMapper.readValue<List<ProductRecommendation>>(doubleCheck).take(limit)
+            }
+
+            // ES에서 조회 (한 번만 실행됨)
+            log.debug { "Cache miss for category=$category popular products, querying ES" }
+            cacheMissCounter.increment()
+            val products = queryPopularProducts(category = category, limit = properties.cache.categoryCacheSize)
+
+            // Redis에 캐싱
+            if (products.isNotEmpty()) {
+                redisTemplate.opsForValue()
+                    .set(cacheKey, objectMapper.writeValueAsString(products), cacheTtl)
+                    .awaitSingle()
+            }
+
+            products.take(limit)
         }
-
-        return products.take(limit)
     }
 
     /**
@@ -207,9 +244,39 @@ class PopularProductsCache(
                 }
         }, Void::class.java)
 
-        return aggResponse.aggregations()["popular_products"]
-            ?.sterms()?.buckets()?.array()
-            ?.map { it.key().stringValue() } ?: emptyList()
+        // 안전한 집계 결과 추출 (NPE 방지)
+        return runCatching {
+            val aggregation = aggResponse.aggregations()["popular_products"]
+            if (aggregation == null) {
+                log.debug { "No popular_products aggregation found" }
+                return@runCatching emptyList<String>()
+            }
+
+            val sterms = aggregation.sterms()
+            if (sterms == null) {
+                log.debug { "Aggregation is not a string terms aggregation" }
+                return@runCatching emptyList<String>()
+            }
+
+            val buckets = sterms.buckets()
+            if (buckets == null) {
+                log.debug { "No buckets in string terms aggregation" }
+                return@runCatching emptyList<String>()
+            }
+
+            val bucketArray = buckets.array()
+            if (bucketArray.isNullOrEmpty()) {
+                log.debug { "Empty bucket array in aggregation" }
+                return@runCatching emptyList<String>()
+            }
+
+            bucketArray.mapNotNull { bucket ->
+                runCatching { bucket.key().stringValue() }.getOrNull()
+            }
+        }.getOrElse { e ->
+            log.error(e) { "Failed to parse aggregation response" }
+            emptyList()
+        }
     }
 
     /**

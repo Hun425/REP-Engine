@@ -117,7 +117,8 @@ services:
     container_name: rep-redis
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    # volatile-lru: TTL이 설정된 키만 LRU 대상 (24h TTL 설정과 호환)
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy volatile-lru
     volumes:
       - redis-data:/data
     healthcheck:
@@ -187,12 +188,67 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_SECURITY_ALLOW_EMBEDDING=true
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       prometheus:
         condition: service_healthy
+      loki:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+
+  # ============================================
+  # Logging Stack (Phase 5)
+  # ============================================
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: rep-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: rep-promtail
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  # ============================================
+  # Distributed Tracing (Phase 5)
+  # ============================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: rep-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:16686/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ============================================
   # Infrastructure Exporters
@@ -233,6 +289,24 @@ services:
       redis:
         condition: service_healthy
 
+  # ============================================
+  # Frontend (Phase 6)
+  # ============================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: rep-frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - grafana
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   zookeeper-data:
   zookeeper-logs:
@@ -242,6 +316,7 @@ volumes:
   embedding-model-cache:
   prometheus-data:
   grafana-data:
+  loki-data:
 
 networks:
   default:

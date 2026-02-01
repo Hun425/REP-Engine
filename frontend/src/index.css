@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* Tailwind v4 Theme 설정 */
+@theme {
+  /* Colors */
+  --color-background: oklch(100% 0 0);
+  --color-foreground: oklch(14.9% 0.02 254);
+  --color-card: oklch(100% 0 0);
+  --color-card-foreground: oklch(14.9% 0.02 254);
+  --color-primary: oklch(14.9% 0.02 254);
+  --color-primary-foreground: oklch(98.4% 0.003 247);
+  --color-secondary: oklch(96.1% 0.005 247);
+  --color-secondary-foreground: oklch(14.9% 0.02 254);
+  --color-muted: oklch(96.1% 0.005 247);
+  --color-muted-foreground: oklch(45.9% 0.02 254);
+  --color-accent: oklch(96.1% 0.005 247);
+  --color-accent-foreground: oklch(14.9% 0.02 254);
+  --color-destructive: oklch(60% 0.2 25);
+  --color-destructive-foreground: oklch(98.4% 0.003 247);
+  --color-border: oklch(91.4% 0.01 254);
+  --color-input: oklch(91.4% 0.01 254);
+  --color-ring: oklch(14.9% 0.02 254);
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* Dark theme */
+.dark {
+  --color-background: oklch(14.9% 0.02 254);
+  --color-foreground: oklch(98.4% 0.003 247);
+  --color-card: oklch(14.9% 0.02 254);
+  --color-card-foreground: oklch(98.4% 0.003 247);
+  --color-primary: oklch(98.4% 0.003 247);
+  --color-primary-foreground: oklch(14.9% 0.02 254);
+  --color-secondary: oklch(22.6% 0.02 254);
+  --color-secondary-foreground: oklch(98.4% 0.003 247);
+  --color-muted: oklch(22.6% 0.02 254);
+  --color-muted-foreground: oklch(71.1% 0.02 254);
+  --color-accent: oklch(22.6% 0.02 254);
+  --color-accent-foreground: oklch(98.4% 0.003 247);
+  --color-destructive: oklch(45% 0.15 25);
+  --color-destructive-foreground: oklch(98.4% 0.003 247);
+  --color-border: oklch(22.6% 0.02 254);
+  --color-input: oklch(22.6% 0.02 254);
+  --color-ring: oklch(83.9% 0.02 254);
+}
+
+/* Base styles */
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+}

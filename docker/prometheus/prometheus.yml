@@ -15,7 +15,7 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets:
-          - 'simulator:8080'
+          - 'simulator:8084'
           - 'behavior-consumer:8081'
           - 'recommendation-api:8082'
           - 'notification-service:8083'

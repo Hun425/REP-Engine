@@ -1,0 +1,105 @@
+# Promtail Configuration for REP-Engine
+# Phase 5: Observability Stack
+# Docker 컨테이너 로그 수집 및 Loki로 전송
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Docker 컨테이너 로그 수집
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["logging=promtail"]
+    relabel_configs:
+      # 컨테이너 이름 추출 (앞의 / 제거)
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      # Docker Compose 서비스명
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+      # Docker Compose 프로젝트명
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        target_label: 'project'
+      # 컨테이너 ID
+      - source_labels: ['__meta_docker_container_id']
+        target_label: 'container_id'
+    pipeline_stages:
+      # JSON 로그 파싱 (Spring Boot LogstashEncoder 출력)
+      - json:
+          expressions:
+            level: level
+            message: message
+            logger: logger_name
+            thread: thread_name
+            traceId: traceId
+            spanId: spanId
+            timestamp: "@timestamp"
+            application: application
+            exception: stack_trace
+      # 라벨로 추출
+      - labels:
+          level:
+          logger:
+          traceId:
+          spanId:
+          application:
+      # 타임스탬프 파싱
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05.000Z07:00"
+          fallback_formats:
+            - "2006-01-02T15:04:05.000Z"
+            - RFC3339
+      # 로그 레벨별 라벨링
+      - match:
+          selector: '{level="ERROR"}'
+          stages:
+            - labels:
+                severity: error
+      - match:
+          selector: '{level="WARN"}'
+          stages:
+            - labels:
+                severity: warning
+      # 출력 포맷 (message만 표시)
+      - output:
+          source: message
+
+  # 모든 REP 컨테이너 로그 수집 (라벨 없이도)
+  - job_name: rep-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values: ["rep-*"]
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+    pipeline_stages:
+      # JSON 파싱 시도, 실패하면 원본 유지
+      - json:
+          expressions:
+            level: level
+            message: message
+            traceId: traceId
+            spanId: spanId
+      - labels:
+          level:
+          traceId:
+          spanId:

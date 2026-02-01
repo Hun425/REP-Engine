@@ -6,13 +6,15 @@ package com.rep.model
  * @property preferenceVector 취향 벡터 (384차원, multilingual-e5-base)
  * @property actionCount 누적 행동 수
  * @property updatedAt 마지막 업데이트 시간 (epoch millis)
+ * @property version 버전 (Optimistic Locking용, ES 동기화 race condition 방지)
  *
  * @see docs/adr-004-vector-storage.md
  */
 data class UserPreferenceData(
     val preferenceVector: List<Float>,
     val actionCount: Int = 1,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val version: Long = 1
 ) {
     fun toFloatArray(): FloatArray = preferenceVector.toFloatArray()
 }

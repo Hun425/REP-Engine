@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- ============================================ -->
+    <!-- JSON 콘솔 출력 (Docker 환경) -->
+    <!-- Phase 5: Loki + Promtail 연동 -->
+    <!-- ============================================ -->
+    <springProfile name="docker">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <!-- MDC 필드 포함 (tracing) -->
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>spanId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <!-- 애플리케이션 정보 -->
+                <customFields>{"application":"simulator"}</customFields>
+                <!-- 타임스탬프 설정 -->
+                <timeZone>UTC</timeZone>
+                <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</timestampPattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- ============================================ -->
+    <!-- 텍스트 콘솔 출력 (로컬 개발 환경) -->
+    <!-- ============================================ -->
+    <springProfile name="!docker">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} [%thread] [%X{traceId:-},%X{spanId:-}] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- ============================================ -->
+    <!-- 모듈별 로그 레벨 설정 -->
+    <!-- ============================================ -->
+    <logger name="com.rep.simulator" level="DEBUG"/>
+    <logger name="org.apache.kafka" level="WARN"/>
+    <logger name="org.springframework.kafka" level="WARN"/>
+    <logger name="io.confluent" level="WARN"/>
+</configuration>

@@ -9,6 +9,7 @@ import com.rep.notification.config.NotificationProperties
 import com.rep.notification.repository.ProductRepository
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
+import kotlinx.coroutines.delay
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
 import java.time.Instant
@@ -33,6 +34,7 @@ class EventDetector(
     private val properties: NotificationProperties,
     meterRegistry: MeterRegistry
 ) {
+
     private val priceDropDetectedCounter = Counter.builder("notification.event.detected")
         .tag("type", "price_drop")
         .description("Price drop events detected")
@@ -88,42 +90,51 @@ class EventDetector(
             val product = productRepository.findById(event.productId.toString())
             val productName = product?.productName ?: "상품"
 
-            // 알림 발송
+            // 알림 발송 (배치 처리로 Kafka 버스트 방지)
             var sentCount = 0
-            for (userId in targetUsers) {
-                // Rate Limit 체크
-                if (!rateLimiter.canSend(userId, event.productId.toString(), "PRICE_DROP")) {
-                    rateLimitedCounter.increment()
-                    continue
+            val batches = targetUsers.chunked(properties.batchSize)
+
+            for ((batchIndex, batch) in batches.withIndex()) {
+                for (userId in batch) {
+                    // Rate Limit 체크
+                    if (!rateLimiter.canSend(userId, event.productId.toString(), "PRICE_DROP")) {
+                        rateLimitedCounter.increment()
+                        continue
+                    }
+
+                    val notification = NotificationEvent.newBuilder()
+                        .setNotificationId(UUID.randomUUID().toString())
+                        .setUserId(userId)
+                        .setProductId(event.productId.toString())
+                        .setNotificationType(NotificationType.PRICE_DROP)
+                        .setTitle("가격이 떨어졌어요!")
+                        .setBody("${productName}이(가) ${dropPercentage}% 할인 중입니다!")
+                        .setData(
+                            mapOf(
+                                "previousPrice" to previousPrice.toString(),
+                                "currentPrice" to currentPrice.toString(),
+                                "dropPercentage" to dropPercentage.toString()
+                            )
+                        )
+                        .setChannels(listOf(Channel.PUSH, Channel.IN_APP))
+                        .setPriority(Priority.HIGH)
+                        .setTimestamp(Instant.now())
+                        .build()
+
+                    notificationProducer.send(notification)
+                    sentCount++
+                    notificationTriggeredCounter.increment()
                 }
 
-                val notification = NotificationEvent.newBuilder()
-                    .setNotificationId(UUID.randomUUID().toString())
-                    .setUserId(userId)
-                    .setProductId(event.productId.toString())
-                    .setNotificationType(NotificationType.PRICE_DROP)
-                    .setTitle("가격이 떨어졌어요!")
-                    .setBody("${productName}이(가) ${dropPercentage}% 할인 중입니다!")
-                    .setData(
-                        mapOf(
-                            "previousPrice" to previousPrice.toString(),
-                            "currentPrice" to currentPrice.toString(),
-                            "dropPercentage" to dropPercentage.toString()
-                        )
-                    )
-                    .setChannels(listOf(Channel.PUSH, Channel.IN_APP))
-                    .setPriority(Priority.HIGH)
-                    .setTimestamp(Instant.now())
-                    .build()
-
-                notificationProducer.send(notification)
-                sentCount++
-                notificationTriggeredCounter.increment()
+                // 마지막 배치가 아니면 딜레이 적용 (Kafka 버스트 방지)
+                if (batchIndex < batches.size - 1) {
+                    delay(properties.batchDelayMs)
+                }
             }
 
             log.info {
                 "Price drop notifications sent: productId=${event.productId}, " +
-                    "targetUsers=${targetUsers.size}, sent=$sentCount"
+                    "targetUsers=${targetUsers.size}, sent=$sentCount, batches=${batches.size}"
             }
         }
     }
@@ -154,36 +165,45 @@ class EventDetector(
             val product = productRepository.findById(event.productId.toString())
             val productName = product?.productName ?: "상품"
 
-            // 알림 발송
+            // 알림 발송 (배치 처리로 Kafka 버스트 방지)
             var sentCount = 0
-            for (userId in targetUsers) {
-                // Rate Limit 체크
-                if (!rateLimiter.canSend(userId, event.productId.toString(), "BACK_IN_STOCK")) {
-                    rateLimitedCounter.increment()
-                    continue
+            val batches = targetUsers.chunked(properties.batchSize)
+
+            for ((batchIndex, batch) in batches.withIndex()) {
+                for (userId in batch) {
+                    // Rate Limit 체크
+                    if (!rateLimiter.canSend(userId, event.productId.toString(), "BACK_IN_STOCK")) {
+                        rateLimitedCounter.increment()
+                        continue
+                    }
+
+                    val notification = NotificationEvent.newBuilder()
+                        .setNotificationId(UUID.randomUUID().toString())
+                        .setUserId(userId)
+                        .setProductId(event.productId.toString())
+                        .setNotificationType(NotificationType.BACK_IN_STOCK)
+                        .setTitle("재입고 알림")
+                        .setBody("${productName}이(가) 다시 입고되었습니다!")
+                        .setData(mapOf("currentStock" to currentStock.toString()))
+                        .setChannels(listOf(Channel.PUSH, Channel.SMS))
+                        .setPriority(Priority.HIGH)
+                        .setTimestamp(Instant.now())
+                        .build()
+
+                    notificationProducer.send(notification)
+                    sentCount++
+                    notificationTriggeredCounter.increment()
                 }
 
-                val notification = NotificationEvent.newBuilder()
-                    .setNotificationId(UUID.randomUUID().toString())
-                    .setUserId(userId)
-                    .setProductId(event.productId.toString())
-                    .setNotificationType(NotificationType.BACK_IN_STOCK)
-                    .setTitle("재입고 알림")
-                    .setBody("${productName}이(가) 다시 입고되었습니다!")
-                    .setData(mapOf("currentStock" to currentStock.toString()))
-                    .setChannels(listOf(Channel.PUSH, Channel.SMS))
-                    .setPriority(Priority.HIGH)
-                    .setTimestamp(Instant.now())
-                    .build()
-
-                notificationProducer.send(notification)
-                sentCount++
-                notificationTriggeredCounter.increment()
+                // 마지막 배치가 아니면 딜레이 적용 (Kafka 버스트 방지)
+                if (batchIndex < batches.size - 1) {
+                    delay(properties.batchDelayMs)
+                }
             }
 
             log.info {
                 "Restock notifications sent: productId=${event.productId}, " +
-                    "targetUsers=${targetUsers.size}, sent=$sentCount"
+                    "targetUsers=${targetUsers.size}, sent=$sentCount, batches=${batches.size}"
             }
         }
     }

@@ -49,9 +49,10 @@ class NotificationHistoryService(
                 "productId" to notification.productId.toString(),
                 "type" to notification.notificationType.toString(),
                 "title" to notification.title.toString(),
+                "body" to notification.body.toString(),
                 "channels" to notification.channels.map { it.toString() },
                 "status" to status.name,
-                "sentAt" to Instant.now().toEpochMilli()
+                "sentAt" to Instant.now().toString()  // ISO 8601 형식 (ES date 타입 호환)
             )
 
             esClient.index { i ->

@@ -30,7 +30,8 @@ recommendation-api/
     │   ├── config/
     │   │   ├── RecommendationProperties.kt  # 설정값
     │   │   ├── ElasticsearchConfig.kt       # ES 연결
-    │   │   └── RedisConfig.kt               # Redis 연결
+    │   │   ├── RedisConfig.kt               # Redis 연결
+    │   │   └── WebConfig.kt                 # CORS 설정
     │   ├── controller/
     │   │   └── RecommendationController.kt  # API 엔드포인트
     │   ├── service/
@@ -98,6 +99,20 @@ GET /api/v1/recommendations/popular?limit=10
 
 **응답**: 위와 동일한 형식, `strategy`가 `"popularity"`
 
+### 3. 헬스 체크 API
+
+**요청**:
+```http
+GET /api/v1/recommendations/health
+```
+
+**응답**:
+```json
+{
+  "status": "ok"
+}
+```
+
 ---
 
 ## 전체 동작 흐름
@@ -163,7 +178,8 @@ GET /api/v1/recommendations/USER-000001
 @RestController
 @RequestMapping("/api/v1/recommendations")
 class RecommendationController(
-    private val recommendationService: RecommendationService
+    private val recommendationService: RecommendationService,
+    private val virtualThreadDispatcher: CoroutineDispatcher  // Virtual Thread Dispatcher 주입
 ) {
 
     @GetMapping("/{userId}")
@@ -174,8 +190,9 @@ class RecommendationController(
         @RequestParam(defaultValue = "true") excludeViewed: Boolean
     ): ResponseEntity<RecommendationResponse> {
 
-        // runBlocking: 코루틴 함수를 일반 함수에서 호출
-        val response = runBlocking {
+        // Virtual Thread dispatcher로 runBlocking 실행
+        // Blocking I/O 발생 시에도 Virtual Thread가 unmount되어 처리량 유지
+        val response = runBlocking(virtualThreadDispatcher) {
             recommendationService.getRecommendations(
                 userId = userId,
                 limit = limit.coerceIn(1, 50),  // 1~50 범위로 제한
@@ -189,13 +206,24 @@ class RecommendationController(
 
     @GetMapping("/popular")
     fun getPopularProducts(
-        @RequestParam(defaultValue = "10") limit: Int
+        @RequestParam(defaultValue = "10") limit: Int,
+        @RequestParam(required = false) category: String?
     ): ResponseEntity<RecommendationResponse> {
-        // "_anonymous_" 유저로 요청 → Cold Start 트리거
-        // → 인기 상품 반환
+        val response = runBlocking(virtualThreadDispatcher) {
+            recommendationService.getRecommendations(
+                userId = "_anonymous_",  // 임의의 ID로 Cold Start 트리거
+                limit = limit.coerceIn(1, 50),
+                category = category,
+                excludeViewed = false
+            )
+        }
+        return ResponseEntity.ok(response)
     }
 }
 ```
+
+> **Virtual Thread Dispatcher**: `DispatcherConfig.kt`에서 정의된 Virtual Thread 기반 Dispatcher입니다.
+> 코루틴이 Blocking I/O를 만나면 Virtual Thread가 자동으로 unmount되어 다른 요청을 처리할 수 있습니다.
 
 #### @RequestParam vs @PathVariable
 
@@ -412,6 +440,72 @@ class PopularProductsCache(
     바로 응답 반환
 ```
 
+#### 3단계 폴백 전략 (데이터 부족 시)
+
+행동 데이터가 부족한 경우를 위한 폴백 전략:
+
+```kotlin
+// PopularProductsCache.kt
+private fun queryPopularProducts(category: String?, limit: Int): List<ProductRecommendation> {
+    // 1단계: PURCHASE 집계 시도
+    var productIds = queryBehaviorAggregation(
+        actionTypes = listOf("PURCHASE"),
+        limit = limit
+    )
+
+    // 2단계: PURCHASE 없으면 VIEW/CLICK 집계
+    if (productIds.isEmpty()) {
+        productIds = queryBehaviorAggregation(
+            actionTypes = listOf("VIEW", "CLICK"),
+            limit = limit
+        )
+    }
+
+    // 3단계: VIEW/CLICK도 없으면 최신 상품 조회
+    if (productIds.isEmpty()) {
+        return getLatestProducts(category = category, limit = limit)
+    }
+
+    return enrichWithProductInfo(productIds)
+}
+```
+
+| 단계 | 데이터 소스 | 조건 |
+|------|------------|------|
+| 1단계 | PURCHASE 집계 | 기본 (구매 데이터 있음) |
+| 2단계 | VIEW/CLICK 집계 | 구매 데이터 없음 |
+| 3단계 | 최신 등록 상품 | 행동 데이터 전무 |
+
+#### Thundering Herd 방지
+
+캐시 만료 시 동시 요청이 몰리는 문제를 Mutex로 해결:
+
+```kotlin
+// PopularProductsCache.kt
+private val globalCacheMutex = Mutex()
+private val categoryCacheMutexMap = ConcurrentHashMap<String, Mutex>()
+
+suspend fun getTopProducts(limit: Int): List<ProductRecommendation> {
+    // 1차 캐시 확인
+    val cached = redisTemplate.opsForValue().get(CACHE_KEY_GLOBAL).awaitSingleOrNull()
+    if (cached != null) return parseProducts(cached)
+
+    // Double-check locking: 동시 요청 중 하나만 ES 쿼리 실행
+    return globalCacheMutex.withLock {
+        // 2차 캐시 확인 (다른 요청이 이미 채웠을 수 있음)
+        val doubleCheck = redisTemplate.opsForValue().get(CACHE_KEY_GLOBAL).awaitSingleOrNull()
+        if (doubleCheck != null) return@withLock parseProducts(doubleCheck)
+
+        // ES 쿼리 실행 및 캐시 저장
+        val products = queryPopularProducts(null, 100)
+        cacheProducts(CACHE_KEY_GLOBAL, products)
+        products.take(limit)
+    }
+}
+```
+
+**효과**: 캐시 미스 시 ES 쿼리가 1번만 실행됨 (N개 동시 요청 → 1번 쿼리)
+
 ---
 
 ### 5. RecommendationModels.kt (응답 모델)
@@ -421,7 +515,7 @@ class PopularProductsCache(
 data class RecommendationResponse(
     val userId: String,                              // 유저 ID
     val recommendations: List<ProductRecommendation>, // 추천 상품 목록
-    val strategy: String,                            // "knn" 또는 "popularity"
+    val strategy: String,                            // "knn" | "popularity" | "category_best" | "fallback"
     val latencyMs: Long                              // 처리 시간 (밀리초)
 )
 
@@ -450,9 +544,17 @@ data class ProductRecommendation(
 
 ## 설정 파일 (application.yml)
 
+### 포트 설정
+
+| 환경 | 포트 | 설명 |
+|------|------|------|
+| 로컬 개발 | 8080 | 기본값 (`SERVER_PORT` 환경변수로 변경 가능) |
+| Docker | 8082 | `docker` 프로파일 활성화 시 |
+
 ```yaml
+# 기본 설정 (로컬)
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   threads:
@@ -461,21 +563,79 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+# UserPreferenceRepository Redis 조회 설정
+# Redis 장애 시 빠른 실패를 위한 500ms timeout 적용 (코드 내 하드코딩)
+# private const val REDIS_TIMEOUT_MS = 500L
 
 elasticsearch:
-  host: localhost
-  port: 9200
+  host: ${ELASTICSEARCH_HOST:localhost}
+  port: ${ELASTICSEARCH_PORT:9200}
 
 recommendation:
   knn:
-    k: 10                    # 기본 추천 개수
+    k: ${RECOMMENDATION_K:10}  # 기본 추천 개수
   cache:
-    popular-ttl-minutes: 10  # 인기 상품 캐시 유지 시간
-    global-cache-size: 100   # 전체 인기 상품 캐시 크기
-    category-cache-size: 50  # 카테고리별 캐시 크기
+    popular-ttl-minutes: 10    # 인기 상품 캐시 유지 시간
+    global-cache-size: 100     # 전체 인기 상품 캐시 크기
+    category-cache-size: 50    # 카테고리별 캐시 크기
+
+---
+# Docker 프로파일
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  data:
+    redis:
+      host: redis
+
+elasticsearch:
+  host: elasticsearch
+
+server:
+  port: 8082  # Docker 환경에서는 8082 사용
 ```
+
+---
+
+## CORS 설정
+
+프론트엔드에서 API를 호출할 수 있도록 CORS가 설정되어 있습니다.
+
+### WebConfig.kt
+
+```kotlin
+@Configuration
+class WebConfig : WebMvcConfigurer {
+
+    override fun addCorsMappings(registry: CorsRegistry) {
+        registry.addMapping("/api/**")
+            .allowedOrigins(
+                "http://localhost:5173",  // Vite 기본 포트
+                "http://localhost:3001",  // 대체 포트
+                "http://localhost:3000",  // 대체 포트
+                "http://frontend:80"      // Docker
+            )
+            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+            .allowedHeaders("*")
+            .allowCredentials(true)
+            .maxAge(3600)
+    }
+}
+```
+
+### 허용된 오리진
+
+| 오리진 | 용도 |
+|--------|------|
+| `http://localhost:5173` | Vite 기본 포트 (Vite 4+) |
+| `http://localhost:3001` | 대체 포트 |
+| `http://localhost:3000` | 대체 포트 |
+| `http://frontend:80` | Docker 컨테이너 간 통신 |
 
 ---
 
@@ -516,11 +676,29 @@ curl "http://localhost:8080/api/v1/recommendations/health"
 
 ## 메트릭
 
+### 핵심 메트릭
+
 | 메트릭 이름 | 의미 |
 |------------|------|
 | `recommendation.latency` | 추천 API 응답 시간 |
 | `recommendation.strategy.knn` | KNN 전략 사용 횟수 |
 | `recommendation.strategy.popularity` | 인기 전략 사용 횟수 |
+| `recommendation.strategy.category_best` | 카테고리별 인기 전략 사용 횟수 |
+| `recommendation.strategy.fallback` | 폴백 전략 사용 횟수 (오류 발생 시) |
+
+### 추가 메트릭 (상세)
+
+| 메트릭 이름 | 의미 |
+|------------|------|
+| `recommendation.strategy.category_best` | 카테고리 베스트 전략 사용 횟수 |
+| `recommendation.knn.failed` | KNN 검색 실패 수 |
+| `recommendation.fallback.used` | 오류로 인기 상품 폴백 사용 횟수 |
+| `recommendation.result.empty` | 빈 결과 반환 횟수 |
+| `popular.cache.hit` | 인기 상품 캐시 히트 |
+| `popular.cache.miss` | 인기 상품 캐시 미스 |
+| `preference.cache.hit` | 취향 벡터 캐시 히트 |
+| `preference.cache.miss` | 취향 벡터 캐시 미스 |
+| `preference.es.fallback` | ES 폴백 조회 횟수 |
 
 ---
 
@@ -529,7 +707,7 @@ curl "http://localhost:8080/api/v1/recommendations/health"
 | 항목 | 내용 |
 |------|------|
 | 역할 | 개인화 상품 추천 API |
-| 포트 | 8080 |
+| 포트 | 8080 (로컬), 8082 (Docker) |
 | 핵심 API | `GET /api/v1/recommendations/{userId}` |
 | 추천 전략 | KNN (개인화), Popularity (Cold Start) |
 | 캐시 | Redis (취향 벡터, 인기 상품) |

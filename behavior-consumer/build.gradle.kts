@@ -41,9 +41,14 @@ dependencies {
 
     // Logging
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
+    implementation("net.logstash.logback:logstash-logback-encoder:8.0")  // Phase 5: JSON 로깅
 
     // Micrometer for metrics
     implementation("io.micrometer:micrometer-registry-prometheus")
+
+    // Distributed Tracing (Phase 5)
+    implementation("io.micrometer:micrometer-tracing-bridge-otel")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")

@@ -1,5 +1,7 @@
 package com.rep.model
 
+import java.time.Instant
+
 /**
  * ES notification_history_index 문서 구조
  *
@@ -13,9 +15,10 @@ data class NotificationHistory(
     val productId: String? = null,
     val type: String? = null,
     val title: String? = null,
+    val body: String? = null,
     val channels: List<String>? = null,
     val status: String? = null,
-    val sentAt: Long? = null
+    val sentAt: Instant? = null
 )
 
 /**

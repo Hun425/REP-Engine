@@ -14,12 +14,7 @@
 | 04 | [behavior-consumer](./04-behavior-consumer.md) | behavior-consumer | Kafka→ES 저장 + 취향 업데이트 |
 | 05 | [recommendation-api](./05-recommendation-api.md) | recommendation-api | 개인화 추천 API |
 | 06 | [notification-service](./06-notification-service.md) | notification-service | 가격 변동 감지 + 알림 발송 |
-
-### 구현 예정 (Phase 5)
-
-| 번호 | Phase | 내용 | 상태 |
-|------|-------|------|------|
-| 07 | Phase 5 | 모니터링 + 통합 테스트 | 구현 후 추가 예정 |
+| 07 | [frontend](./07-frontend.md) | frontend | React 통합 대시보드 (Phase 6) |
 
 ---
 
@@ -37,6 +32,8 @@
 5. recommendation-api (추천이 어떻게 동작하는지)
        ↓
 6. notification-service (알림이 어떻게 발송되는지)
+       ↓
+7. frontend        (사용자가 어떻게 시스템을 사용하는지)
 ```
 
 ---
@@ -100,8 +97,12 @@
                          │
                          ▼
                 ┌──────────────┐
-                │   클라이언트  │
-                │ (웹/앱)      │
+                │   frontend   │  ◀── React 대시보드 (Phase 6)
+                │  (통합 UI)   │
+                │              │
+                │ - 추천 검색  │
+                │ - 모니터링   │
+                │ - 시뮬제어   │
                 └──────────────┘
 ```
 
@@ -138,6 +139,11 @@
 - **뭘 하나요?** 가격 하락/재입고 시 관심 유저에게 알림 발송
 - **왜 필요한가요?** 유저 재방문 유도, 전환율 향상
 - **핵심 클래스**: `EventDetector`, `TargetResolver`, `NotificationRateLimiter`
+
+### frontend
+- **뭘 하나요?** 시스템 전체를 한눈에 보고 제어하는 대시보드
+- **왜 필요한가요?** 운영자/개발자가 시스템 상태를 모니터링하고 테스트
+- **핵심 기술**: React, TanStack Query, Zustand, Tailwind CSS
 
 ---
 

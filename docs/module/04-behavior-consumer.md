@@ -29,9 +29,15 @@ behavior-consumer/
     │   ├── config/
     │   │   ├── ConsumerProperties.kt        # 설정값 클래스
     │   │   ├── KafkaConsumerConfig.kt       # Kafka 수신 설정
+    │   │   ├── KafkaProducerConfig.kt       # Kafka 발신 설정 (DLQ용)
     │   │   ├── ElasticsearchConfig.kt       # ES 연결 설정
     │   │   ├── RedisConfig.kt               # Redis 연결 설정
-    │   │   └── DispatcherConfig.kt          # Virtual Thread 설정
+    │   │   ├── DispatcherConfig.kt          # Virtual Thread 설정
+    │   │   ├── WebClientConfig.kt           # WebClient 설정 (Embedding API용)
+    │   │   ├── EmbeddingProperties.kt       # Embedding 서비스 설정
+    │   │   └── SchemaRegistryHealthIndicator.kt  # Schema Registry 헬스체크
+    │   ├── client/
+    │   │   └── EmbeddingClient.kt           # Embedding Service 호출
     │   ├── listener/
     │   │   └── BehaviorEventListener.kt     # Kafka 이벤트 수신
     │   ├── service/
@@ -43,7 +49,8 @@ behavior-consumer/
     │       ├── UserPreferenceRepository.kt  # 유저 취향 저장소
     │       └── ProductVectorRepository.kt   # 상품 벡터 조회
     └── resources/
-        └── application.yml
+        ├── application.yml
+        └── logback-spring.xml               # 로깅 설정
 ```
 
 ---
@@ -258,8 +265,48 @@ class PreferenceUpdater(
 
         return true
     }
+
+    /**
+     * 배치 처리: 여러 이벤트를 효율적으로 처리
+     */
+    suspend fun updatePreferencesBatch(events: List<UserActionEvent>): Int {
+        // 1. 유저별로 이벤트 그룹화
+        val eventsByUser = events.groupBy { it.userId.toString() }
+
+        for ((userId, userEvents) in eventsByUser) {
+            // 2. 해당 유저의 모든 상품 벡터 한 번에 조회
+            val productIds = userEvents.map { it.productId.toString() }.distinct()
+            val productVectors = productVectorRepository.getProductVectors(productIds)
+
+            // 3. 유저별 Mutex로 직렬화
+            getUserLock(userId).withLock {
+                var currentPreference = userPreferenceRepository.get(userId)
+
+                // 4. 이벤트 순서대로 취향 벡터 갱신
+                for (event in userEvents) {
+                    val productVector = productVectors[event.productId.toString()]
+                    if (productVector != null) {
+                        currentPreference = calculator.update(currentPreference, productVector, event.actionType)
+                    }
+                }
+
+                // 5. 최종 결과 저장 (한 번만)
+                userPreferenceRepository.save(userId, currentPreference!!, actionCount)
+            }
+        }
+    }
 }
 ```
+
+#### 배치 처리 vs 단건 처리
+
+| 항목 | 단건 처리 | 배치 처리 |
+|------|----------|----------|
+| 상품 벡터 조회 | 이벤트당 1회 | 유저당 1회 (mget) |
+| Redis 저장 | 이벤트당 1회 | 유저당 1회 |
+| Lost Update 방지 | 유저별 Mutex | 유저별 Mutex |
+
+> 배치 처리는 같은 유저의 여러 이벤트를 그룹화하여 I/O를 최소화합니다.
 
 #### 처리 흐름 그림
 
@@ -361,7 +408,66 @@ class PreferenceVectorCalculator {
 
 ---
 
-### 5. DlqProducer.kt (실패 처리)
+### 5. EmbeddingClient.kt (Embedding 서비스 호출)
+
+**역할**: Python Embedding Service를 호출하여 텍스트를 384차원 벡터로 변환
+
+```kotlin
+@Component
+class EmbeddingClient(
+    private val embeddingWebClient: WebClient
+) {
+    companion object {
+        const val QUERY_PREFIX = "query: "      // 검색 쿼리용 (유저 취향)
+        const val PASSAGE_PREFIX = "passage: "  // 문서용 (상품 정보)
+    }
+
+    /**
+     * 텍스트 목록을 벡터로 변환 (배치)
+     */
+    suspend fun embed(texts: List<String>, prefix: String = QUERY_PREFIX): List<FloatArray>?
+
+    /**
+     * 단일 텍스트를 벡터로 변환
+     */
+    suspend fun embedSingle(text: String, prefix: String = QUERY_PREFIX): FloatArray?
+
+    /**
+     * 헬스체크
+     */
+    suspend fun healthCheck(): Boolean
+}
+```
+
+#### 요청/응답 데이터
+
+```kotlin
+// 요청
+data class EmbedRequest(
+    val texts: List<String>,
+    val prefix: String = "query: "  // e5 모델용 prefix
+)
+
+// 응답
+data class EmbedResponse(
+    val embeddings: List<List<Float>>,  // 각 텍스트의 벡터
+    val dims: Int = 384                  // 벡터 차원
+)
+```
+
+#### e5 모델의 prefix 사용
+
+| prefix | 용도 | 예시 |
+|--------|------|------|
+| `query: ` | 검색 쿼리, 유저 취향 | "query: 가죽 지갑" |
+| `passage: ` | 문서, 상품 정보 | "passage: 고급 소가죽 지갑" |
+
+> multilingual-e5-base 모델은 prefix를 사용하여 검색 쿼리와 문서를 구분합니다.
+> 이를 통해 비대칭 검색(유저 취향 → 상품 매칭)의 정확도가 향상됩니다.
+
+---
+
+### 6. DlqProducer.kt (실패 처리)
 
 **역할**: 처리 실패한 메시지를 Dead Letter Queue로 보냄
 
@@ -459,16 +565,57 @@ class UserPreferenceRepository(
             save(userId, vector, actionCount)
         }?.first
     }
+
+    /**
+     * 유저 취향 데이터 전체 조회 (벡터 + 메타데이터)
+     */
+    suspend fun getWithMetadata(userId: String): UserPreferenceData? {
+        val cached = redisTemplate.opsForValue().get("$KEY_PREFIX$userId").awaitSingleOrNull()
+        return cached?.let { objectMapper.readValue<UserPreferenceData>(it) }
+    }
 }
 ```
 
 #### Redis 키 구조
 
 ```
-user:preference:USER-000001  →  {"preferenceVector":[0.1,0.2,...], "actionCount":15, ...}
-user:preference:USER-000002  →  {"preferenceVector":[0.3,0.1,...], "actionCount":8, ...}
-user:preference:USER-000003  →  {"preferenceVector":[0.5,0.4,...], "actionCount":23, ...}
+user:preference:USER-000001  →  {"preferenceVector":[0.1,0.2,...], "actionCount":15, "updatedAt":1705123456789}
+user:preference:USER-000002  →  {"preferenceVector":[0.3,0.1,...], "actionCount":8, "updatedAt":1705123456790}
+user:preference:USER-000003  →  {"preferenceVector":[0.5,0.4,...], "actionCount":23, "updatedAt":1705123456791}
 ```
+
+#### UserPreferenceData 구조
+
+```kotlin
+data class UserPreferenceData(
+    val preferenceVector: List<Float>,  // 384차원 취향 벡터
+    val actionCount: Int,               // 누적 행동 수
+    val updatedAt: Long,                // 마지막 업데이트 타임스탬프 (밀리초)
+    val version: Long                   // 버전 (Optimistic Locking용)
+)
+```
+
+> `updatedAt`은 ES 백업 시 External Versioning에 사용됩니다.
+> `version`은 Optimistic Locking에 사용되어 동시 업데이트 시 race condition을 방지합니다.
+> 오래된 데이터가 최신 데이터를 덮어쓰지 않도록 보장합니다.
+
+#### actionCount 초기화 로직
+
+```kotlin
+// PreferenceUpdater.kt
+val currentData = userPreferenceRepository.getWithMetadata(userId)
+var actionCount = currentData?.actionCount ?: 0  // 신규 유저: 0에서 시작
+
+for (event in userEvents) {
+    // 이벤트 처리 성공 시
+    actionCount++  // 각 이벤트마다 1 증가
+}
+
+userPreferenceRepository.save(userId, vector, actionCount)
+```
+
+- **신규 유저**: `actionCount = 0`에서 시작, 첫 번째 이벤트 처리 후 `1`
+- **기존 유저**: 저장된 `actionCount`에서 계속 증가
 
 #### 왜 Redis랑 ES 둘 다 쓰나요?
 
@@ -481,32 +628,202 @@ user:preference:USER-000003  →  {"preferenceVector":[0.5,0.4,...], "actionCoun
 
 ---
 
+## 동시성 제어 (Lost Update 방지)
+
+### 유저별 Mutex
+
+동일 유저의 취향 벡터가 동시에 업데이트되면 Lost Update 문제 발생.
+유저별 Mutex로 직렬화하여 해결:
+
+```kotlin
+// PreferenceUpdater.kt
+private val userLocks = ConcurrentHashMap<String, Mutex>()
+
+private fun getUserLock(userId: String): Mutex =
+    userLocks.computeIfAbsent(userId) { Mutex() }
+
+suspend fun updatePreference(userId: String, event: UserActionEvent) {
+    val lock = getUserLock(userId)
+    lock.withLock {
+        // 1. 현재 취향 조회
+        val current = userPreferenceRepository.get(userId)
+        // 2. EMA 계산
+        val updated = calculator.update(current, productVector, event.actionType)
+        // 3. 저장
+        userPreferenceRepository.save(userId, updated, actionCount)
+    }
+}
+```
+
+**효과**: 동일 유저에 대한 업데이트가 순차적으로 처리됨
+
+### External Versioning (ES 백업)
+
+ES 백업 시 오래된 데이터가 최신 데이터를 덮어쓰지 않도록 External Versioning 사용:
+
+```kotlin
+// UserPreferenceRepository.kt
+esClient.index { idx ->
+    idx.index(ES_INDEX)
+        .id(userId)
+        .document(document)
+        .versionType(VersionType.External)
+        .version(updatedAt)  // updatedAt 타임스탬프를 버전으로 사용
+}
+```
+
+**효과**: 네트워크 지연으로 구버전 데이터가 뒤늦게 도착해도 무시됨
+
+---
+
+## DLQ 파일 백업 (최후의 수단)
+
+DLQ 전송도 실패하면 로컬 파일에 기록:
+
+```kotlin
+// DlqProducer.kt
+companion object {
+    private const val MAX_FILE_SIZE = 10 * 1024 * 1024L  // 10MB
+}
+
+private fun writeToFailedEventsFile(event: UserActionEvent) {
+    val logFile = File("logs/failed_events_${LocalDate.now()}.log")
+
+    // 파일 크기 제한 체크
+    if (logFile.exists() && logFile.length() >= MAX_FILE_SIZE) {
+        // 타임스탬프 기반 백업 생성
+        val backupName = "failed_events_${LocalDate.now()}_${System.currentTimeMillis()}.log"
+        logFile.renameTo(File("logs/$backupName"))
+    }
+
+    // JSON 형식으로 기록
+    val entry = objectMapper.writeValueAsString(mapOf(
+        "timestamp" to Instant.now().toString(),
+        "traceId" to event.traceId,
+        "userId" to event.userId,
+        "productId" to event.productId,
+        "actionType" to event.actionType.toString()
+    ))
+    logFile.appendText("$entry\n")
+}
+```
+
+### 파일 로테이션 정책
+
+| 조건 | 동작 |
+|------|------|
+| 일별 | 새 파일 생성 (`failed_events_2024-01-15.log`) |
+| 10MB 초과 | 타임스탬프 백업 후 새 파일 생성 |
+
+---
+
 ## 설정 파일 (application.yml)
+
+### 포트 설정
+
+| 환경 | 포트 | 용도 |
+|------|------|------|
+| Docker | 8081 | Actuator 메트릭 엔드포인트 노출 |
+
+> **참고**: 이 모듈은 Kafka Consumer로 HTTP 요청을 받지 않습니다.
+> 포트는 Prometheus가 메트릭을 수집하기 위한 Actuator 엔드포인트 용도입니다.
 
 ```yaml
 spring:
   kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: behavior-consumer-group  # 컨슈머 그룹 ID
       max-poll-records: 500              # 한 번에 500개씩 받기
       enable-auto-commit: false          # 수동 커밋 (중요!)
+      properties:
+        schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 elasticsearch:
-  host: localhost
-  port: 9200
+  host: ${ELASTICSEARCH_HOST:localhost}
+  port: ${ELASTICSEARCH_PORT:9200}
 
+# Embedding Service (상품 벡터 생성)
+embedding:
+  service:
+    url: ${EMBEDDING_SERVICE_URL:http://localhost:8000}
+    timeout-ms: 5000    # 타임아웃 5초
+    batch-size: 32      # 배치 요청 크기
+
+# Consumer 설정 (환경변수로 오버라이드 가능)
 consumer:
   topic: user.action.v1
   dlq-topic: user.action.v1.dlq
-  bulk-size: 500          # ES Bulk 크기
-  max-retries: 3          # 최대 재시도 횟수
-  retry-delay-ms: 1000    # 재시도 대기 시간
+  bulk-size: 500                               # ES Bulk 크기
+  concurrency: ${CONSUMER_CONCURRENCY:3}       # 동시 처리 스레드 수
+  max-retries: ${CONSUMER_MAX_RETRIES:3}       # 최대 재시도 횟수
+  retry-delay-ms: ${CONSUMER_RETRY_DELAY_MS:1000}  # 재시도 대기 시간
+  vector-dimensions: 384  # multilingual-e5-base 벡터 차원
+
+# Actuator (메트릭 수집용)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+
+---
+# Docker 프로파일
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+server:
+  port: 8081  # Docker 환경에서 Actuator 포트
 ```
+
+---
+
+## ProductVectorRepository (상품 벡터 조회)
+
+**역할**: ES product_index에서 상품 벡터 조회
+
+```kotlin
+@Repository
+class ProductVectorRepository(private val esClient: ElasticsearchClient) {
+
+    /** 단일 상품 벡터 조회 */
+    fun getProductVector(productId: String): FloatArray?
+
+    /** 여러 상품 벡터 일괄 조회 (mget) */
+    fun getProductVectors(productIds: List<String>): Map<String, FloatArray>
+}
+```
+
+### 벡터 차원 검증
+
+상품 벡터 조회 시 **384차원 검증**을 수행합니다:
+
+```kotlin
+if (vector.size != EXPECTED_DIMENSIONS) {
+    log.warn { "Product $productId has invalid vector dimension: ${vector.size}" }
+    return null  // 잘못된 차원의 벡터는 무시
+}
+```
+
+### 배치 조회 (mget)
+
+```kotlin
+// 단건 조회 (get)
+val vector = getProductVector("PROD-001")
+
+// 배치 조회 (mget) - 네트워크 왕복 1회로 여러 상품 조회
+val vectors = getProductVectors(listOf("PROD-001", "PROD-002", "PROD-003"))
+// 결과: {"PROD-001": [...], "PROD-002": [...], "PROD-003": [...]}
+```
+
+> 배치 처리 시 `getProductVectors()`로 유저의 모든 상품 벡터를 한 번에 조회하여 I/O 최소화.
 
 ---
 
@@ -514,15 +831,40 @@ consumer:
 
 이 모듈은 다양한 메트릭을 수집합니다:
 
+### Kafka Consumer 메트릭
+
 | 메트릭 이름 | 의미 |
 |------------|------|
 | `kafka.consumer.processed` | 처리한 이벤트 수 |
 | `kafka.consumer.indexed` | ES에 저장된 이벤트 수 |
 | `kafka.consumer.errors` | 오류 발생 수 |
 | `kafka.consumer.batch.duration` | 배치 처리 시간 |
+| `kafka.consumer.batch.size` | 배치당 이벤트 수 |
+
+### ES Bulk Indexing 메트릭
+
+| 메트릭 이름 | 의미 |
+|------------|------|
 | `es.bulk.success` | ES 저장 성공 수 |
 | `es.bulk.failed` | ES 저장 실패 수 |
+| `es.bulk.batch.failed` | 전체 배치 실패 수 |
+| `es.bulk.retry` | 재시도 횟수 |
+| `es.bulk.duration` | Bulk 요청 소요 시간 |
+
+### 취향 벡터 업데이트 메트릭
+
+| 메트릭 이름 | 의미 |
+|------------|------|
 | `preference.update.success` | 취향 업데이트 성공 수 |
+| `preference.update.skipped` | 상품 벡터 없어서 스킵된 수 |
+| `preference.update.failed` | 취향 업데이트 실패 수 |
+
+### DLQ 메트릭
+
+| 메트릭 이름 | 의미 |
+|------------|------|
+| `kafka.dlq.sent` | DLQ로 전송된 메시지 수 |
+| `kafka.dlq.failed` | DLQ 전송 실패 (파일로 백업) 수 |
 
 ---
 
@@ -548,6 +890,7 @@ cd ..
 | 항목 | 내용 |
 |------|------|
 | 역할 | Kafka → ES 저장 + 취향 벡터 업데이트 |
+| 포트 | 8081 (Docker, Actuator 메트릭용) |
 | 입력 | Kafka 토픽 `user.action.v1` |
 | 출력 | ES `user_behavior_index`, Redis 취향 벡터 |
 | 배치 크기 | 500개씩 처리 |

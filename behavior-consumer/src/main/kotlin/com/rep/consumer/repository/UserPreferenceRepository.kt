@@ -1,6 +1,7 @@
 package com.rep.consumer.repository
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient
+import co.elastic.clients.elasticsearch._types.VersionType
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.rep.model.UserPreferenceData
@@ -64,10 +65,11 @@ class UserPreferenceRepository(
      */
     suspend fun save(userId: String, vector: FloatArray, actionCount: Int = 1) {
         val key = "$KEY_PREFIX$userId"
+        val updatedAt = System.currentTimeMillis()
         val data = UserPreferenceData(
             preferenceVector = vector.toList(),
             actionCount = actionCount,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = updatedAt
         )
 
         try {
@@ -80,9 +82,10 @@ class UserPreferenceRepository(
 
             // 2. ES 백업 (비동기 - best-effort)
             // Redis가 Primary이므로 ES 백업 실패는 전체 저장 실패로 처리하지 않음
+            // updatedAt을 전달하여 External versioning으로 race condition 방지
             esBackupScope.launch {
                 try {
-                    saveToEs(userId, vector, actionCount)
+                    saveToEs(userId, vector, actionCount, updatedAt)
                 } catch (e: Exception) {
                     log.warn(e) { "ES backup failed for userId=$userId (best-effort, Redis is primary)" }
                 }
@@ -144,23 +147,35 @@ class UserPreferenceRepository(
 
     /**
      * ES에 유저 취향 벡터를 백업합니다.
+     *
+     * Race Condition 방지: External versioning으로 updatedAt이 더 최신인 경우만 저장.
+     * 구버전 데이터가 뒤늦게 도착해도 신버전을 덮어쓰지 않습니다.
      */
-    private fun saveToEs(userId: String, vector: FloatArray, actionCount: Int) {
+    private fun saveToEs(userId: String, vector: FloatArray, actionCount: Int, updatedAt: Long) {
         try {
             val document = mapOf(
                 "userId" to userId,
                 "preferenceVector" to vector.toList(),
                 "actionCount" to actionCount,
-                "updatedAt" to System.currentTimeMillis()
+                "updatedAt" to updatedAt
             )
 
             esClient.index { idx ->
                 idx.index(ES_INDEX)
                     .id(userId)
                     .document(document)
+                    .versionType(VersionType.External)
+                    .version(updatedAt)  // updatedAt을 version으로 사용
             }
 
-            log.debug { "Backed up preference vector for userId=$userId to ES" }
+            log.debug { "Backed up preference vector for userId=$userId to ES (version=$updatedAt)" }
+        } catch (e: co.elastic.clients.elasticsearch._types.ElasticsearchException) {
+            // VersionConflictEngineException: 이미 더 최신 버전이 있음 (정상 상황)
+            if (e.message?.contains("version_conflict_engine_exception") == true) {
+                log.debug { "ES backup skipped for userId=$userId: newer version already exists" }
+            } else {
+                log.warn(e) { "Failed to backup preference vector to ES for userId=$userId" }
+            }
         } catch (e: Exception) {
             // ES 백업 실패는 로그만 남기고 계속 진행 (Redis가 Primary)
             log.warn(e) { "Failed to backup preference vector to ES for userId=$userId" }

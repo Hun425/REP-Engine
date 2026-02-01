@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component
  * 취향 벡터 갱신은 best-effort로 처리됩니다 (실패해도 오프셋 커밋).
  *
  * @see <a href="docs/phase 2.md">Phase 2: Kafka Listener</a>
- * @see <a href="docs/phase 3.md">Phase 3: Preference Update</a>
+ * @see <a href="docs/phase 2.md">Phase 2: Preference Update</a>
  */
 @Component
 @OptIn(ExperimentalCoroutinesApi::class)

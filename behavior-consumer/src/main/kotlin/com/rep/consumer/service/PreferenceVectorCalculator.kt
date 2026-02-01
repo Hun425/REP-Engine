@@ -18,7 +18,7 @@ private val log = KotlinLogging.logger {}
  * - CLICK: 0.3 (중간 신호)
  * - PURCHASE: 0.5 (강한 신호)
  *
- * @see docs/phase%203.md
+ * @see docs/phase%202.md
  */
 @Component
 class PreferenceVectorCalculator {

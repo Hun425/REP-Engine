@@ -36,6 +36,13 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+  # Tracing (Phase 5) - 로컬에서는 비활성화
+  tracing:
+    enabled: false
+
+# Server
+server:
+  port: ${SERVER_PORT:8084}
 
 # Logging
 logging:
@@ -55,3 +62,16 @@ spring:
     producer:
       properties:
         schema.registry.url: http://schema-registry:8081
+
+server:
+  port: 8084
+
+# Tracing (Phase 5) - Docker 환경에서 활성화
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0  # 100% 샘플링 (개발용)
+  otlp:
+    tracing:
+      endpoint: http://jaeger:4318/v1/traces

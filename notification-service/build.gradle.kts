@@ -38,11 +38,23 @@ dependencies {
     // Redis (Rate Limiter)
     implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
 
+    // WebClient for HTTP 호출 (recommendation-api 연동)
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
+
+    // ShedLock for 분산 락 (다중 인스턴스 중복 실행 방지)
+    implementation("net.javacrumbs.shedlock:shedlock-spring:5.10.0")
+    implementation("net.javacrumbs.shedlock:shedlock-provider-redis-spring:5.10.0")
+
     // Logging
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
+    implementation("net.logstash.logback:logstash-logback-encoder:8.0")  // Phase 5: JSON 로깅
 
     // Micrometer for metrics
     implementation("io.micrometer:micrometer-registry-prometheus")
+
+    // Distributed Tracing (Phase 5)
+    implementation("io.micrometer:micrometer-tracing-bridge-otel")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")

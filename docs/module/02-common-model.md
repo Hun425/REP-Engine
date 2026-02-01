@@ -28,7 +28,8 @@ common-model/
 └── src/main/kotlin/com/rep/model/
     ├── ProductDocument.kt         # 상품 정보 (ES에 저장)
     ├── UserPreferenceData.kt      # 유저 취향 (Redis에 저장)
-    └── UserPreferenceDocument.kt  # 유저 취향 (ES 백업용)
+    ├── UserPreferenceDocument.kt  # 유저 취향 (ES 백업용)
+    └── NotificationHistory.kt     # 알림 발송 이력 (ES에 저장)
 ```
 
 ---
@@ -41,11 +42,14 @@ common-model/
 
 ```kotlin
 data class ProductDocument(
-    val productId: String? = null,        // 상품 고유 ID
-    val productName: String? = null,      // 상품명 (예: "삼성 갤럭시 S24")
-    val category: String? = null,         // 대분류 (예: "ELECTRONICS")
+    // 필수 필드 (JSON 역직렬화를 위해 빈 문자열 기본값)
+    val productId: String = "",           // 상품 고유 ID
+    val productName: String = "",         // 상품명 (예: "삼성 갤럭시 S24")
+    val category: String = "",            // 대분류 (예: "ELECTRONICS")
+    val price: Float = 0f,                // 가격 (예: 1200000.0)
+
+    // 선택 필드 (nullable)
     val subCategory: String? = null,      // 소분류 (예: "스마트폰")
-    val price: Float? = null,             // 가격 (예: 1200000.0)
     val stock: Int? = null,               // 재고 수량 (예: 50)
     val brand: String? = null,            // 브랜드 (예: "Samsung")
     val description: String? = null,      // 상품 설명
@@ -53,8 +57,17 @@ data class ProductDocument(
     val productVector: List<Float>? = null,  // 상품 벡터 (384개 숫자)
     val createdAt: String? = null,        // 등록일
     val updatedAt: String? = null         // 수정일
-)
+) {
+    /** 필수 필드가 유효한지 검증 */
+    fun isValid(): Boolean = productId.isNotBlank() && productName.isNotBlank()
+                             && category.isNotBlank() && price >= 0
+
+    /** 상품 벡터가 존재하는지 확인 */
+    fun hasVector(): Boolean = productVector != null && productVector.isNotEmpty()
+}
 ```
+
+> **참고**: 필수 필드(`productId`, `productName`, `category`, `price`)는 JSON 역직렬화 시 누락 방지를 위해 기본값을 가지며, `isValid()` 메서드로 실제 유효성을 검증합니다.
 
 #### 상품 벡터(productVector)란?
 
@@ -79,9 +92,15 @@ data class ProductDocument(
 data class UserPreferenceData(
     val preferenceVector: List<Float>,    // 유저 취향 벡터 (384개 숫자)
     val actionCount: Int = 1,             // 누적 행동 수
-    val updatedAt: Long = System.currentTimeMillis()  // 마지막 업데이트 시간
-)
+    val updatedAt: Long = System.currentTimeMillis(),  // 마지막 업데이트 시간
+    val version: Long = 1                 // 버전 (Optimistic Locking용)
+) {
+    /** KNN 검색용 FloatArray 변환 */
+    fun toFloatArray(): FloatArray = preferenceVector.toFloatArray()
+}
 ```
+
+> **version 필드**: Redis-ES 동기화 시 race condition 방지를 위한 Optimistic Locking에 사용됩니다.
 
 #### 왜 Redis에 저장하나요?
 
@@ -139,6 +158,50 @@ data class UserPreferenceDocument(
 
 ---
 
+### 4. NotificationHistory.kt
+
+**역할**: Elasticsearch의 `notification_history_index`에 저장되는 알림 발송 이력
+
+```kotlin
+data class NotificationHistory(
+    val notificationId: String? = null,   // 알림 고유 ID
+    val userId: String? = null,           // 대상 유저 ID
+    val productId: String? = null,        // 관련 상품 ID
+    val type: String? = null,             // 알림 유형 (PRICE_DROP, BACK_IN_STOCK 등)
+    val title: String? = null,            // 알림 제목
+    val body: String? = null,             // 알림 본문
+    val channels: List<String>? = null,   // 발송 채널 (PUSH, SMS, IN_APP)
+    val status: String? = null,           // 발송 상태 (SendStatus enum 값)
+    val sentAt: Instant? = null           // 발송 시각
+)
+
+/** 알림 발송 상태 */
+enum class SendStatus {
+    SENT,           // 발송 완료
+    FAILED,         // 발송 실패
+    RATE_LIMITED,   // Rate Limit으로 차단됨
+    USER_OPTED_OUT  // 유저가 알림 수신 거부
+}
+```
+
+#### 알림 유형 (type)
+
+| 값 | 설명 |
+|-----|------|
+| `PRICE_DROP` | 가격 인하 알림 |
+| `BACK_IN_STOCK` | 재입고 알림 |
+| `DAILY_RECOMMENDATION` | 일일 추천 알림 |
+
+#### 발송 채널 (channels)
+
+| 값 | 설명 |
+|-----|------|
+| `PUSH` | 모바일 푸시 알림 |
+| `SMS` | 문자 메시지 |
+| `IN_APP` | 인앱 알림 |
+
+---
+
 ## 데이터 흐름도
 
 ```
@@ -187,6 +250,8 @@ data class UserPreferenceDocument(
 | recommendation-api | `ProductDocument` | KNN 검색 결과 매핑 |
 | recommendation-api | `UserPreferenceData` | 유저 취향 Redis 조회 |
 | recommendation-api | `UserPreferenceDocument` | 유저 취향 ES 폴백 |
+| notification-service | `ProductDocument` | 상품 정보 조회 (알림 내용 생성) |
+| notification-service | `NotificationHistory` | 알림 발송 이력 ES 저장 |
 
 ---
 
@@ -229,5 +294,7 @@ data class Person(val name: String, val age: Int)
 | ProductDocument | 상품 정보 + 벡터 (ES 저장) |
 | UserPreferenceData | 유저 취향 벡터 (Redis 저장) |
 | UserPreferenceDocument | 유저 취향 벡터 (ES 백업) |
+| NotificationHistory | 알림 발송 이력 (ES 저장) |
+| SendStatus | 알림 발송 상태 enum |
 | 벡터 차원 | 384개 (multilingual-e5-base 모델) |
-| 사용 모듈 | behavior-consumer, recommendation-api |
+| 사용 모듈 | behavior-consumer, recommendation-api, notification-service |

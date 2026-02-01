@@ -12,7 +12,7 @@
 
 1. 상품 가격이 떨어지거나 재입고되면 (Kafka에서 이벤트 수신)
 2. 그 상품에 관심 보인 고객 목록을 찾아서 (ES에서 행동 기록 조회)
-3. "좋아하시던 상품이 할인 중이에요!"라고 알림을 보냅니다 (Push/SMS/Email)
+3. "좋아하시던 상품이 할인 중이에요!"라고 알림을 보냅니다 (Push/SMS/IN_APP)
 
 ---
 
@@ -26,14 +26,20 @@ notification-service/
     │   ├── NotificationServiceApplication.kt  # 앱 시작점
     │   ├── config/
     │   │   ├── NotificationProperties.kt      # 설정값 클래스
-    │   │   ├── KafkaConsumerConfig.kt         # Kafka Consumer 설정
+    │   │   ├── KafkaConsumerConfig.kt         # Kafka Consumer 설정 (DLQ 포함)
     │   │   ├── KafkaProducerConfig.kt         # Kafka Producer 설정
     │   │   ├── ElasticsearchConfig.kt         # ES 연결 설정
     │   │   ├── RedisConfig.kt                 # Redis 연결 설정
-    │   │   └── DispatcherConfig.kt            # Virtual Thread 설정
+    │   │   ├── DispatcherConfig.kt            # Virtual Thread 설정
+    │   │   ├── SchedulingConfig.kt            # @EnableScheduling 설정
+    │   │   └── ShedLockConfig.kt              # 분산 락 설정 (Redis)
     │   ├── consumer/
     │   │   ├── InventoryEventConsumer.kt      # 재고/가격 변동 수신
     │   │   └── PushSenderSimulator.kt         # 알림 발송 시뮬레이터
+    │   ├── scheduler/
+    │   │   └── RecommendationScheduler.kt     # 일일 추천 배치 스케줄러
+    │   ├── client/
+    │   │   └── RecommendationClient.kt        # 추천 API 클라이언트
     │   ├── service/
     │   │   ├── EventDetector.kt               # 알림 조건 감지
     │   │   ├── TargetResolver.kt              # 대상 유저 추출
@@ -41,7 +47,8 @@ notification-service/
     │   │   ├── NotificationRateLimiter.kt     # 중복/과다 발송 방지
     │   │   └── NotificationHistoryService.kt  # 발송 이력 저장
     │   └── repository/
-    │       └── ProductRepository.kt           # 상품 정보 조회
+    │       ├── ProductRepository.kt           # 상품 정보 조회
+    │       └── ActiveUserRepository.kt        # 활성 유저 조회 (ES)
     └── resources/
         └── application.yml
 ```
@@ -151,14 +158,12 @@ class InventoryEventConsumer(
 ) {
 
     @KafkaListener(
-        topics = ["product.inventory.v1"],
+        topics = ["\${notification.inventory-topic}"],
         groupId = "notification-consumer-group",
         containerFactory = "inventoryListenerContainerFactory"  // concurrency=3
     )
-    fun consume(
-        record: ConsumerRecord<String, ProductInventoryEvent>,
-        acknowledgment: Acknowledgment
-    ) {
+    fun consume(record: ConsumerRecord<String, ProductInventoryEvent>) {
+        // Acknowledgment 없음: DefaultErrorHandler가 자동으로 재시도/DLQ 처리
         val event = record.value()
 
         when (event.eventType) {
@@ -166,8 +171,7 @@ class InventoryEventConsumer(
             STOCK_CHANGE -> eventDetector.detectRestock(event)
             else -> { /* 무시 */ }
         }
-
-        acknowledgment.acknowledge()
+        // 정상 완료 시 자동 커밋, 예외 시 DefaultErrorHandler가 재시도 후 DLQ로 전송
     }
 }
 ```
@@ -334,33 +338,33 @@ class NotificationRateLimiter(
 
     /**
      * 중복 알림 방지 (동일 유저+상품+타입에 1시간 내 중복 차단)
+     * setIfAbsent로 원자적 SETNX 수행 (Race Condition 방지)
      */
     suspend fun shouldSend(userId: String, productId: String, type: String): Boolean {
         val key = "$SENT_KEY_PREFIX$userId:$productId:$type"
 
-        val exists = redisTemplate.hasKey(key).awaitSingle()
-        if (exists) return false  // 이미 발송함
+        // SETNX: 키가 없을 때만 설정 (원자적 연산)
+        val wasSet = redisTemplate.opsForValue()
+            .setIfAbsent(key, "1", Duration.ofHours(1))
+            .awaitSingleOrNull() ?: false
 
-        // 1시간 TTL로 키 설정
-        redisTemplate.opsForValue()
-            .set(key, "1", Duration.ofHours(1))
-            .awaitSingle()
-
-        return true
+        return wasSet  // true면 처음 발송, false면 이미 발송됨
     }
 
     /**
      * 일일 발송 제한 (유저당 하루 10회)
+     * TTL을 먼저 설정 후 increment하여 Race Condition 방지
      */
     suspend fun checkDailyLimit(userId: String): Boolean {
         val key = "$DAILY_KEY_PREFIX$userId"
 
-        val count = redisTemplate.opsForValue().increment(key).awaitSingle()
+        // 키가 없으면 TTL과 함께 생성 (setIfAbsent로 보장)
+        redisTemplate.opsForValue()
+            .setIfAbsent(key, "0", calculateTtlUntilMidnight())
+            .awaitSingleOrNull()
 
-        if (count == 1L) {
-            // 첫 알림이면 자정까지 TTL 설정
-            redisTemplate.expire(key, calculateTtlUntilMidnight()).awaitSingle()
-        }
+        // increment (키가 이미 있으면 증가만)
+        val count = redisTemplate.opsForValue().increment(key).awaitSingleOrNull() ?: 1L
 
         return count <= 10  // 10회 초과 시 차단
     }
@@ -432,7 +436,6 @@ class PushSenderSimulator(
             when (channel) {
                 PUSH -> simulatePush(notification)     // FCM/APNs
                 SMS -> simulateSms(notification)       // SMS Gateway
-                EMAIL -> simulateEmail(notification)   // SendGrid/SES
                 IN_APP -> simulateInApp(notification)  // WebSocket
             }
         }
@@ -462,7 +465,6 @@ class PushSenderSimulator(
 |------|-----------|------|
 | PUSH | FCM, APNs | 모바일 앱 알림 |
 | SMS | Twilio, AWS SNS | 긴급 알림 |
-| EMAIL | SendGrid, AWS SES | 마케팅, 상세 정보 |
 | IN_APP | WebSocket | 실시간 웹 알림 |
 
 ---
@@ -538,7 +540,398 @@ fun notificationListenerContainerFactory() = ...apply {
 
 ---
 
+## Fail-Close 정책 (Redis 장애 대응)
+
+**중요**: Redis 장애 시 알림을 **차단**합니다 (Fail-Close).
+
+```kotlin
+// NotificationRateLimiter.kt
+suspend fun shouldSend(userId: String, productId: String, type: String): Boolean {
+    return try {
+        // Redis 중복 체크 로직...
+    } catch (e: Exception) {
+        log.error(e) { "Failed to check duplicate (blocking - fail-close policy)" }
+        failCloseBlockedCounter.increment()
+        false  // Redis 오류 시 발송 차단 (fail-close)
+    }
+}
+```
+
+### 왜 Fail-Close인가?
+
+| 정책 | 동작 | 리스크 |
+|------|------|--------|
+| **Fail-Close** (채택) | Redis 오류 시 알림 **차단** | 일부 알림 누락 |
+| Fail-Open | Redis 오류 시 알림 **허용** | 중복/과다 알림으로 유저 이탈 |
+
+**선택 이유**: 알림 누락보다 스팸 알림이 유저 경험에 더 치명적
+
+---
+
+## 추가 구현 클래스
+
+### RecommendationClient (추천 API 호출)
+
+일일 추천 배치에서 recommendation-api를 호출합니다.
+
+```kotlin
+// client/RecommendationClient.kt
+@Component
+class RecommendationClient(
+    private val webClient: WebClient
+) {
+    suspend fun getRecommendations(userId: String, limit: Int): List<ProductRecommendation> {
+        return webClient.get()
+            .uri("/api/v1/recommendations/{userId}?limit={limit}", userId, limit)
+            .retrieve()
+            .bodyToMono<RecommendationResponse>()
+            .awaitSingleOrNull()
+            ?.recommendations ?: emptyList()
+    }
+}
+```
+
+### ActiveUserRepository (활성 유저 조회)
+
+최근 N일 내 활동한 유저 목록을 ES에서 집계합니다.
+
+```kotlin
+// repository/ActiveUserRepository.kt
+fun findActiveUsers(withinDays: Int, limit: Int): List<String> {
+    // ES user_behavior_index에서 terms aggregation
+    // 최근 활동 유저 추출
+}
+```
+
+### DispatcherConfig (Virtual Thread)
+
+Virtual Thread 기반 Dispatcher로 blocking I/O 성능 최적화.
+
+```kotlin
+// config/DispatcherConfig.kt
+@Bean
+fun virtualThreadDispatcher(): CoroutineDispatcher =
+    Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
+```
+
+---
+
+## RecommendationScheduler (일일 추천 배치)
+
+**역할**: 매일 지정 시간에 활성 유저에게 개인화 추천 알림 발송
+
+### 핵심 기능
+
+```kotlin
+@Component
+@ConditionalOnProperty(
+    prefix = "notification.recommendation",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = true  // 기본 활성화
+)
+class RecommendationScheduler(
+    private val activeUserRepository: ActiveUserRepository,
+    private val recommendationClient: RecommendationClient,
+    private val notificationProducer: NotificationProducer,
+    private val rateLimiter: NotificationRateLimiter,
+    private val properties: NotificationProperties
+) {
+
+    @Scheduled(cron = "\${notification.recommendation.cron:0 0 9 * * *}", zone = "Asia/Seoul")
+    @SchedulerLock(
+        name = "dailyRecommendationBatch",
+        lockAtMostFor = "1h",      // 최대 1시간 락 (장애 시 자동 해제)
+        lockAtLeastFor = "5m"       // 최소 5분 락 (빠른 완료 시에도 재실행 방지)
+    )
+    fun sendDailyRecommendations() {
+        runBlocking(dispatcher) {
+            executeBatch()
+        }
+    }
+}
+```
+
+### ShedLock 분산 락
+
+다중 인스턴스 환경에서 **단일 인스턴스만 배치 실행**을 보장합니다.
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                   ShedLock 동작 방식                               │
+└───────────────────────────────────────────────────────────────────┘
+
+  Instance A                   Redis                   Instance B
+      │                          │                          │
+      │  ─── 락 획득 시도 ───▶   │                          │
+      │  ◀─── 락 획득 성공 ───   │                          │
+      │                          │                          │
+      │                          │   ◀─── 락 획득 시도 ─── │
+      │                          │   ─── 락 획득 실패 ───▶  │
+      │                          │                          │
+      │ [배치 실행 중...]        │                    [스킵] │
+      │                          │                          │
+      │  ─── 락 해제 ───────▶   │                          │
+```
+
+**Redis 키 구조**:
+```
+# ShedLock 락 키
+shedlock:rep-notification:dailyRecommendationBatch
+  └─ value: {lockUntil, lockedAt, lockedBy}
+```
+
+### 배치 처리 로직
+
+```kotlin
+private suspend fun executeBatch() {
+    // 1. 활성 유저 조회 (최근 N일 내 활동)
+    val activeUsers = activeUserRepository.getActiveUsers(activeUserDays)
+
+    // 2. 청크 단위 처리 (Kafka 버스트 방지)
+    val batches = activeUsers.chunked(batchSize)  // 기본 100명씩
+
+    for ((batchIndex, batch) in batches.withIndex()) {
+        for (userId in batch) {
+            // 3. Rate Limit 체크
+            if (!rateLimiter.canSend(userId, "DAILY_RECOMMENDATION", "RECOMMENDATION")) {
+                continue  // 일일 한도 초과 시 스킵
+            }
+
+            // 4. recommendation-api 호출
+            val recommendations = recommendationClient.getRecommendations(userId, limit)
+
+            if (recommendations.isNotEmpty()) {
+                // 5. 알림 메시지 생성 및 발송
+                notificationProducer.send(createNotification(userId, recommendations))
+            }
+        }
+
+        // 6. 배치 간 딜레이 (Kafka 버스트 방지)
+        if (batchIndex < batches.size - 1) {
+            delay(batchDelayMs)  // 기본 50ms
+        }
+    }
+}
+```
+
+### 배치 설정값
+
+| 설정 | 기본값 | 설명 |
+|------|--------|------|
+| `notification.recommendation.enabled` | `true` | 배치 활성화 여부 |
+| `notification.recommendation.cron` | `0 0 9 * * *` | 매일 오전 9시 (KST) |
+| `notification.recommendation.activeUserDays` | `7` | 활성 유저 기준 (최근 N일) |
+| `notification.recommendation.limit` | `3` | 알림당 추천 상품 수 |
+| `notification.recommendation.apiUrl` | `http://recommendation-api:8082` | 추천 API 주소 |
+| `notification.batchSize` | `100` | 청크 크기 (유저 수) |
+| `notification.batchDelayMs` | `50` | 청크 간 딜레이 (ms) |
+
+---
+
+## DLQ (Dead Letter Queue)
+
+**역할**: 처리 실패한 메시지를 별도 토픽으로 이동하여 추후 분석/재처리
+
+### DLQ 동작 흐름
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       DLQ 처리 흐름                              │
+└─────────────────────────────────────────────────────────────────┘
+
+  [product.inventory.v1]
+         │
+         ▼
+  ┌──────────────────┐
+  │ InventoryEvent   │
+  │ Consumer         │
+  └────────┬─────────┘
+           │
+           ▼ 처리 실패?
+           │
+    ┌──────┴──────┐
+    │ 재시도 (3회) │  ←── FixedBackOff(1000ms, 3)
+    └──────┬──────┘
+           │
+           ▼ 여전히 실패?
+           │
+  ┌────────────────────┐
+  │ DeadLetterPublishing│
+  │ Recoverer           │
+  └────────┬───────────┘
+           │
+           ▼
+  [product.inventory.v1.dlq]  ←── 원본 메시지 + 에러 정보
+```
+
+### DLQ 설정 (KafkaConsumerConfig)
+
+```kotlin
+@Bean
+fun kafkaErrorHandler(
+    deadLetterPublishingRecoverer: DeadLetterPublishingRecoverer
+): CommonErrorHandler {
+    val backOff = FixedBackOff(
+        retryBackoffMs,   // 재시도 간격: 1000ms
+        maxRetries.toLong()  // 재시도 횟수: 3회
+    )
+
+    return DefaultErrorHandler(deadLetterPublishingRecoverer, backOff).apply {
+        setRetryListeners({ record, ex, deliveryAttempt ->
+            log.warn { "Retry attempt $deliveryAttempt for record: topic=${record.topic()}" }
+        })
+    }
+}
+
+@Bean
+fun deadLetterPublishingRecoverer(
+    dlqKafkaTemplate: KafkaTemplate<String, Any>
+): DeadLetterPublishingRecoverer {
+    return DeadLetterPublishingRecoverer(dlqKafkaTemplate) { record, ex ->
+        val dlqTopic = record.topic() + ".dlq"  // 원본토픽.dlq
+        log.error(ex) { "Sending to DLQ: topic=$dlqTopic" }
+        TopicPartition(dlqTopic, record.partition())
+    }
+}
+```
+
+### DLQ 설정값
+
+| 설정 | 기본값 | 설명 |
+|------|--------|------|
+| `notification.dlq.enabled` | `true` | DLQ 활성화 여부 |
+| `notification.dlq.topicSuffix` | `.dlq` | DLQ 토픽 접미사 |
+| `notification.dlq.maxRetries` | `3` | 최대 재시도 횟수 |
+| `notification.dlq.retryBackoffMs` | `1000` | 재시도 간격 (ms) |
+
+### DLQ 토픽 목록
+
+| 원본 토픽 | DLQ 토픽 |
+|----------|---------|
+| `product.inventory.v1` | `product.inventory.v1.dlq` |
+| `notification.push.v1` | `notification.push.v1.dlq` |
+
+### DLQ 메시지 처리 방법
+
+```bash
+# 1. DLQ 메시지 확인
+kafka-console-consumer --bootstrap-server localhost:9092 \
+    --topic product.inventory.v1.dlq \
+    --from-beginning
+
+# 2. 메시지 분석 후 수동 재처리 또는 버리기
+# (별도 DLQ Consumer 구현 또는 운영 도구 활용)
+```
+
+---
+
+## 배치 처리 패턴 (Kafka 버스트 방지)
+
+대량 알림 발송 시 Kafka에 순간 부하를 주지 않도록 **청크 + 딜레이** 패턴을 적용합니다.
+
+### 문제 상황
+
+```
+# 버스트 없이 바로 전송 시
+10,000명 유저 × 1ms = 10초 내 10,000건 발송
+  → Kafka Producer 버퍼 초과 가능
+  → 브로커 부하 집중
+```
+
+### 해결 패턴
+
+```kotlin
+val batches = users.chunked(batchSize)  // 100명씩 나누기
+
+for ((index, batch) in batches.withIndex()) {
+    // 배치 처리 (100건)
+    batch.forEach { user -> sendNotification(user) }
+
+    // 배치 간 딜레이 (마지막 배치 제외)
+    if (index < batches.size - 1) {
+        delay(batchDelayMs)  // 50ms 대기
+    }
+}
+```
+
+### 효과
+
+```
+# 청크 + 딜레이 적용 후
+10,000명 ÷ 100명 = 100배치
+100배치 × 50ms = 5초 추가 소요
+  → 총 15초 내 균등 분산 발송
+  → Kafka 부하 분산
+```
+
+| 설정 | 권장값 | 설명 |
+|------|--------|------|
+| `batchSize` | 100 | 한 번에 처리할 유저 수 |
+| `batchDelayMs` | 50 | 배치 간 대기 시간 (ms) |
+
+---
+
+## Kafka Consumer Acknowledgment 처리
+
+### InventoryEventConsumer
+
+**Acknowledgment Pattern**: Manual `RECORD` mode (자동 처리)
+
+`Acknowledgment` 파라미터를 사용하지 않고, `DefaultErrorHandler`가 자동으로 재시도/DLQ 처리를 담당합니다.
+
+```kotlin
+// 실제 구현 (Acknowledgment 없음)
+@KafkaListener(
+    topics = ["\${notification.inventory-topic}"],
+    groupId = "notification-consumer-group",
+    containerFactory = "inventoryListenerContainerFactory"
+)
+fun consume(record: ConsumerRecord<String, ProductInventoryEvent>) {
+    try {
+        val event = record.value()
+        when (event.eventType) {
+            InventoryEventType.PRICE_CHANGE -> eventDetector.detectPriceDrop(event)
+            InventoryEventType.STOCK_CHANGE -> eventDetector.detectRestock(event)
+            else -> { }
+        }
+        // 정상 완료: Spring Kafka가 자동으로 offset 커밋
+    } catch (e: Exception) {
+        log.error(e) { "Failed to process inventory event" }
+        // 예외 전파 → DefaultErrorHandler가 3회 재시도(1초 간격) 후 DLQ 전송
+        throw e
+    }
+}
+```
+
+**KafkaConsumerConfig 설정**:
+- `ENABLE_AUTO_COMMIT = false`: 자동 커밋 비활성화
+- `AckMode.RECORD`: 메시지 처리 후 수동 확인 모드
+- `DefaultErrorHandler`: 예외 발생 시 `FixedBackOff(1000ms, 3)` 정책으로 재시도
+
+**에러 처리 흐름**:
+1. 정상 처리 → offset 자동 커밋
+2. 처리 실패 → 3회 재시도 (1초 간격)
+3. 모두 실패 → `product.inventory.v1.dlq` 토픽으로 전송
+
+### PushSenderSimulator
+
+이력 저장 후 명시적으로 `acknowledge()` 호출:
+
+```kotlin
+@KafkaListener(topics = ["\${notification.notification-topic}"])
+fun consume(record: ConsumerRecord<String, NotificationEvent>, ack: Acknowledgment) {
+    // 처리 로직...
+    historyService.save(notification, SendStatus.SENT)
+    ack.acknowledge()  // 명시적 커밋
+}
+```
+
+---
+
 ## 메트릭 (모니터링 지표)
+
+### 핵심 메트릭
 
 | 메트릭 이름 | 의미 |
 |------------|------|
@@ -552,6 +945,35 @@ fun notificationListenerContainerFactory() = ...apply {
 | `notification.push.sent` | 실제 발송 시뮬레이션 수 |
 | `notification.push.channel` | 채널별 발송 수 (tag: channel) |
 | `notification.history.save.success` | 이력 저장 성공 수 |
+
+### 추가 메트릭 (상세)
+
+| 메트릭 이름 | 의미 |
+|------------|------|
+| `inventory.events.processed` | 처리된 재고 이벤트 수 |
+| `inventory.events.error` | 재고 이벤트 처리 오류 수 |
+| `notification.rate.fail_close.blocked` | Redis 장애로 차단된 수 |
+| `notification.send.failed` | Kafka 발행 실패 수 |
+| `notification.history.save.failed` | 이력 저장 실패 수 |
+| `notification.active_user.found` | 활성 유저 조회 수 |
+
+### RecommendationScheduler 메트릭
+
+| 메트릭 이름 | 타입 | 의미 |
+|------------|------|------|
+| `batch.recommendation.started` | Counter | 일일 추천 배치 시작 횟수 |
+| `batch.recommendation.completed` | Counter | 일일 추천 배치 성공 완료 횟수 |
+| `batch.recommendation.failed` | Counter | 일일 추천 배치 실패 횟수 |
+| `batch.recommendation.sent` | Counter | 추천 알림 발송 수 |
+| `batch.recommendation.rate_limited` | Counter | Rate Limit으로 스킵된 유저 수 |
+| `batch.recommendation.no_result` | Counter | 추천 결과 없는 유저 수 |
+| `batch.recommendation.duration` | Timer | 배치 실행 소요 시간 |
+
+### DLQ 메트릭
+
+| 메트릭 이름 | 타입 | 의미 |
+|------------|------|------|
+| `kafka.dlq.sent` | Counter | DLQ로 전송된 메시지 수 |
 
 ---
 
@@ -610,5 +1032,5 @@ curl "http://localhost:9200/notification_history_index/_search?pretty"
 | 알림 유형 | PRICE_DROP, BACK_IN_STOCK |
 | Rate Limit | 일일 10회, 1시간 중복 방지 |
 | 대상 유저 조회 | ES 집계 쿼리 (최대 1만 명) |
-| 발송 채널 | PUSH, SMS, EMAIL, IN_APP |
+| 발송 채널 | PUSH, SMS, IN_APP |
 | 이력 저장 | ES `notification_history_index` |

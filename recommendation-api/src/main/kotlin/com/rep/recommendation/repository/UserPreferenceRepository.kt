@@ -8,6 +8,7 @@ import com.rep.model.UserPreferenceDocument
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.reactor.awaitSingleOrNull
+import kotlinx.coroutines.withTimeoutOrNull
 import mu.KotlinLogging
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Repository
@@ -33,6 +34,7 @@ class UserPreferenceRepository(
         private const val KEY_PREFIX = "user:preference:"
         private const val ES_INDEX = "user_preference_index"
         private val TTL = Duration.ofHours(24)
+        private const val REDIS_TIMEOUT_MS = 500L  // Redis 비정상 시 빠른 실패용
     }
 
     private val cacheHitCounter = Counter.builder("preference.cache.hit")
@@ -60,8 +62,10 @@ class UserPreferenceRepository(
         val key = "$KEY_PREFIX$userId"
 
         return try {
-            // 1. Redis에서 조회
-            val cached = redisTemplate.opsForValue().get(key).awaitSingleOrNull()
+            // 1. Redis에서 조회 (타임아웃 적용)
+            val cached = withTimeoutOrNull(REDIS_TIMEOUT_MS) {
+                redisTemplate.opsForValue().get(key).awaitSingleOrNull()
+            }
 
             if (cached != null) {
                 log.debug { "Cache hit for userId=$userId" }
@@ -99,9 +103,12 @@ class UserPreferenceRepository(
                 actionCount = actionCount,
                 updatedAt = System.currentTimeMillis()
             )
-            redisTemplate.opsForValue()
-                .set(key, objectMapper.writeValueAsString(data), TTL)
-                .awaitSingleOrNull()
+            // 캐싱 실패해도 ES 폴백 결과는 반환하므로 타임아웃으로 빠르게 포기
+            withTimeoutOrNull(REDIS_TIMEOUT_MS) {
+                redisTemplate.opsForValue()
+                    .set(key, objectMapper.writeValueAsString(data), TTL)
+                    .awaitSingleOrNull()
+            }
             log.debug { "Cached preference vector from ES fallback for userId=$userId" }
         } catch (e: Exception) {
             log.warn(e) { "Failed to cache preference vector for userId=$userId" }

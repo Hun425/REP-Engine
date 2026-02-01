@@ -20,6 +20,7 @@
 | `behavior-consumer` | Kafka Consumer, ES Indexing, 취향 벡터 갱신 (Phase 2) |
 | `recommendation-api` | 추천 API (Phase 3) |
 | `notification-service` | 가격/재고 변동 감지, 알림 발송 (Phase 4) |
+| `frontend` | React 통합 대시보드 (Phase 6) |
 
 ## 문서 구조 (docs/)
 
@@ -45,6 +46,7 @@
 | `phase 3.md` | KNN 검색, 추천 API |
 | `phase 4.md` | 가격 변동 감지, 알림 발송 |
 | `phase 5.md` | 모니터링, 테스트 |
+| `phase 6.md` | React 프론트엔드 대시보드 |
 
 ## 구현 시 필수 체크리스트
 
@@ -88,7 +90,7 @@
 
 ### ES Bulk Indexing
 - bulkSize: 500
-- flushInterval: 1초
+- Kafka fetch.max.wait.ms: 500ms (배치 수집 대기 시간)
 
 ### KNN 검색
 - k: 10 (기본값)

@@ -25,7 +25,10 @@ simulator/
     │   ├── SimulatorApplication.kt      # 앱 시작점
     │   ├── config/
     │   │   ├── SimulatorProperties.kt   # 설정값 클래스
-    │   │   └── KafkaProducerConfig.kt   # Kafka 연결 설정
+    │   │   ├── KafkaProducerConfig.kt   # Kafka 연결 설정
+    │   │   └── WebConfig.kt             # CORS 설정
+    │   ├── controller/
+    │   │   └── SimulatorController.kt   # REST API 컨트롤러
     │   ├── domain/
     │   │   └── UserSession.kt           # 가짜 유저 1명의 행동
     │   └── service/
@@ -111,7 +114,7 @@ class UserSession(
 ) {
     // 유저가 할 수 있는 행동들과 확률
     companion object {
-        val CATEGORIES = listOf("ELECTRONICS", "FASHION", "HOME", "BEAUTY", "SPORTS", "FOOD", "BOOKS")
+        val CATEGORIES = listOf("ELECTRONICS", "FASHION", "FOOD", "BEAUTY", "SPORTS", "HOME", "BOOKS")
         val ACTION_WEIGHTS = mapOf(
             ActionType.VIEW to 45,        // 45% - 가장 빈번
             ActionType.CLICK to 25,       // 25% - 관심 표현
@@ -122,9 +125,13 @@ class UserSession(
         )
     }
 
+    // 유저별 선호 카테고리 (한 번 정해지면 유지)
+    private val preferredCategory: String = CATEGORIES.random()
+
     fun nextAction(): UserActionEvent {
-        // 1. 어떤 카테고리에서 활동할지 랜덤 선택
-        val category = CATEGORIES.random()
+        // 1. 어떤 카테고리에서 활동할지 선택
+        //    70% 확률로 선호 카테고리, 30% 확률로 다른 카테고리
+        val category = selectCategory()
 
         // 2. 어떤 상품을 볼지 랜덤 선택
         // 형식: PROD-{카테고리3글자}-{00001~productCountPerCategory}
@@ -159,6 +166,101 @@ PURCHASE: 5번 (구매)
 
 이건 실제 쇼핑몰 데이터를 참고해서 만든 비율이에요.
 보통 보기만 하고 구매까지 가는 사람은 적으니까요!
+
+#### 선호 카테고리 (70% 로직)
+
+각 유저는 생성 시 무작위로 선호 카테고리가 정해지고, 70% 확률로 해당 카테고리에서 행동합니다:
+
+```kotlin
+private val preferredCategory: String = CATEGORIES.random()
+
+private fun selectCategory(): String {
+    return if (Random.nextDouble() < 0.7) {
+        preferredCategory  // 70% 확률로 선호 카테고리
+    } else {
+        CATEGORIES.filter { it != preferredCategory }.random()  // 30% 확률로 다른 카테고리
+    }
+}
+```
+
+**예시**: USER-000001의 선호 카테고리가 "ELECTRONICS"라면
+- 70%는 ELECTRONICS 상품 조회
+- 30%는 FASHION, FOOD 등 다른 카테고리 상품 조회
+
+이렇게 하면 실제 유저처럼 특정 분야에 관심이 집중된 행동 패턴을 시뮬레이션할 수 있습니다.
+
+#### 고급 기능: 유저 세션 연속성
+
+실제 쇼핑 행동을 더 현실적으로 시뮬레이션하기 위한 기능들:
+
+**1. 최근 본 상품 추적 (리마케팅 시뮬레이션)**
+
+```kotlin
+// UserSession.kt
+private val recentProducts = mutableListOf<String>()  // 최근 본 상품 20개 저장
+
+fun selectProduct(): String {
+    // 30% 확률로 최근 본 상품 재방문 (리마케팅 효과)
+    if (recentProducts.isNotEmpty() && Random.nextFloat() < 0.3f) {
+        return recentProducts.random()
+    }
+    // 70% 확률로 새 상품 선택
+    val newProduct = generateProductId(category)
+    recentProducts.add(newProduct)
+    if (recentProducts.size > 20) recentProducts.removeAt(0)
+    return newProduct
+}
+```
+
+**2. 가격대 선호도**
+
+```kotlin
+// UserSession.kt
+// 유저별 선호 가격대 (10,000 ~ 680,000)
+val preferredPriceRange: IntRange = run {
+    val base = Random.nextInt(1, 50) * 10000  // 10,000 ~ 490,000
+    base..(base + Random.nextInt(5, 20) * 10000)  // +50,000 ~ 190,000 추가
+}
+
+// PURCHASE 메타데이터에 선호 가격대 반영
+metadata["price"] = Random.nextInt(preferredPriceRange.first, preferredPriceRange.last).toString()
+```
+
+**3. 행동별 메타데이터 생성**
+
+각 행동 유형에 따라 현실적인 메타데이터를 생성합니다:
+
+| 행동 | 메타데이터 필드 | 예시 값 |
+|------|---------------|---------|
+| SEARCH | `searchQuery`, `resultCount` | "갤럭시 케이스", 42 |
+| VIEW | `referrer`, `viewDurationMs` | "home", 15000 (1000~30000ms) |
+| CLICK | `position` | 3 |
+| PURCHASE | `quantity`, `price` | 1, 89000 |
+| ADD_TO_CART | `quantity` | 2 |
+| WISHLIST | `source` | "product_detail" |
+
+```kotlin
+// UserSession.kt
+private fun generateMetadata(actionType: ActionType): Map<String, String> {
+    return when (actionType) {
+        SEARCH -> mapOf(
+            "searchQuery" to generateSearchQuery(category),
+            "resultCount" to Random.nextInt(10, 100).toString()
+        )
+        VIEW -> mapOf(
+            "referrer" to listOf("home", "search", "recommendation", "category").random(),
+            "viewDurationMs" to Random.nextInt(1000, 30000).toString()  // 1~30초
+        )
+        CLICK -> mapOf("position" to Random.nextInt(1, 20).toString())
+        PURCHASE -> mapOf(
+            "quantity" to Random.nextInt(1, 3).toString(),
+            "price" to Random.nextInt(preferredPriceRange).toString()
+        )
+        ADD_TO_CART -> mapOf("quantity" to Random.nextInt(1, 5).toString())
+        WISHLIST -> mapOf("source" to listOf("product_detail", "recommendation", "search_result").random())
+    }
+}
+```
 
 ---
 
@@ -216,6 +318,75 @@ class TrafficSimulator(
 
 Java 21+에서 추가된 기능으로, 적은 리소스로 많은 동시 작업이 가능합니다.
 
+#### Graceful Shutdown (우아한 종료)
+
+시뮬레이터가 종료될 때 진행 중인 이벤트를 안전하게 마무리합니다.
+
+```kotlin
+class TrafficSimulator(...) {
+    // Graceful shutdown 관련 필드
+    private val isShuttingDown = AtomicBoolean(false)
+    private val pendingEvents = AtomicInteger(0)
+    private val simulationLock = ReentrantLock()
+
+    fun stopSimulation() {
+        // 1. shutdown 플래그 설정 (새 이벤트 생성 중단)
+        isShuttingDown.set(true)
+
+        // 2. 코루틴 취소
+        simulationJob?.cancel()
+
+        // 3. in-flight 이벤트 완료 대기 (최대 5초)
+        val maxWaitMs = 5000L
+        while (pendingEvents.get() > 0 && 시간 < maxWaitMs) {
+            Thread.sleep(100)
+        }
+
+        // 4. Kafka Producer flush
+        kafkaTemplate.flush()
+    }
+
+    @PreDestroy
+    fun cleanup() {
+        stopSimulation()
+        scope.cancel()
+        virtualThreadDispatcher.close()
+    }
+}
+```
+
+**5단계 종료 프로세스:**
+1. `isShuttingDown` 플래그 설정 → 새 이벤트 생성 중단
+2. 코루틴 Job 취소
+3. in-flight 이벤트 완료 대기 (최대 5초)
+4. Kafka Producer flush
+5. Dispatcher 종료
+
+#### 메트릭 (Prometheus)
+
+| 메트릭명 | 타입 | 설명 |
+|---------|------|------|
+| `simulator.events.sent` | Counter | 전송 성공 이벤트 수 |
+| `simulator.events.failed` | Counter | 전송 실패 이벤트 수 |
+| `simulator.sessions.active` | Gauge | 현재 활성 세션 수 |
+
+```kotlin
+// 메트릭 정의
+private val sentCounter = Counter.builder("simulator.events.sent")
+    .tag("topic", properties.topic)
+    .register(meterRegistry)
+
+private val failedCounter = Counter.builder("simulator.events.failed")
+    .tag("topic", properties.topic)
+    .register(meterRegistry)
+
+init {
+    Gauge.builder("simulator.sessions.active") { activeSessionCount.get() }
+        .description("Number of active user sessions")
+        .register(meterRegistry)
+}
+```
+
 ---
 
 ### 5. KafkaProducerConfig.kt (Kafka 설정)
@@ -224,31 +395,38 @@ Java 21+에서 추가된 기능으로, 적은 리소스로 많은 동시 작업�
 
 ```kotlin
 @Configuration
-class KafkaProducerConfig {
+class KafkaProducerConfig(
+    @Value("\${spring.kafka.bootstrap-servers}")
+    private val bootstrapServers: String,
+
+    @Value("\${spring.kafka.producer.properties.schema.registry.url}")
+    private val schemaRegistryUrl: String
+) {
 
     @Bean
     fun producerFactory(): ProducerFactory<String, UserActionEvent> {
         val configProps = mapOf(
-            // Kafka 서버 주소
-            BOOTSTRAP_SERVERS_CONFIG to "localhost:9092",
+            // Kafka 서버 주소 (환경변수로 주입)
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
 
             // 키 직렬화: 문자열 그대로
-            KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
+            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
 
             // 값 직렬화: Avro 형식으로
-            VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
+            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
 
             // 안정성 설정
-            ACKS_CONFIG to "all",              // 모든 브로커가 받을 때까지 대기
-            ENABLE_IDEMPOTENCE_CONFIG to true, // 중복 전송 방지
-            RETRIES_CONFIG to 3,               // 실패 시 3번 재시도
+            ProducerConfig.ACKS_CONFIG to "all",
+            ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to true,
+            ProducerConfig.RETRIES_CONFIG to 3,
+            ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION to 5,  // 순서 보장
 
             // 성능 설정
-            LINGER_MS_CONFIG to 5,             // 5ms 모아서 한번에 전송
-            BATCH_SIZE_CONFIG to 16384,        // 16KB씩 모아서 전송
+            ProducerConfig.LINGER_MS_CONFIG to 5,
+            ProducerConfig.BATCH_SIZE_CONFIG to 16384,
 
-            // Schema Registry 주소
-            SCHEMA_REGISTRY_URL_CONFIG to "http://localhost:8081"
+            // Schema Registry 주소 (환경변수로 주입)
+            KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl
         )
         return DefaultKafkaProducerFactory(configProps)
     }
@@ -262,8 +440,11 @@ class KafkaProducerConfig {
 | `acks=all` | 모든 브로커 확인 | 메시지 유실 방지 (안전!) |
 | `idempotence=true` | 중복 방지 ON | 같은 메시지 2번 안 보냄 |
 | `retries=3` | 3번 재시도 | 일시적 오류 극복 |
+| `max.in.flight=5` | 5개 병렬 | 순서 보장 + 성능 (idempotence 필수) |
 | `linger.ms=5` | 5ms 대기 | 모아서 보내기 (효율!) |
 | `batch.size=16384` | 16KB | 한번에 보낼 양 |
+
+> **Note:** 서버 주소와 Schema Registry URL은 `application.yml`에서 환경변수로 주입받습니다. 하드코딩하지 마세요!
 
 ---
 
@@ -272,20 +453,67 @@ class KafkaProducerConfig {
 ```yaml
 spring:
   kafka:
-    bootstrap-servers: localhost:9092  # Kafka 서버 주소
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
       acks: all
       properties:
-        schema.registry.url: http://localhost:8081
+        schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
 
 simulator:
-  user-count: 100          # 가짜 유저 수
-  delay-millis: 1000       # 1초 간격
+  user-count: ${SIMULATOR_USER_COUNT:100}     # 가짜 유저 수
+  delay-millis: ${SIMULATOR_DELAY_MILLIS:1000} # 1초 간격
   topic: user.action.v1    # 보낼 토픽
-  enabled: true            # 시뮬레이터 ON
+  enabled: ${SIMULATOR_ENABLED:true}          # 시뮬레이터 ON
+
+# Actuator (메트릭/헬스체크)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+
+server:
+  port: ${SERVER_PORT:8084}
 ```
+
+### 7. Docker 프로필 설정
+
+Docker 환경에서는 `docker` 프로필이 활성화되어 별도 설정이 적용됩니다.
+
+```yaml
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  kafka:
+    bootstrap-servers: kafka:29092  # Docker 네트워크 내 Kafka 주소
+    producer:
+      properties:
+        schema.registry.url: http://schema-registry:8081
+
+# OpenTelemetry Tracing (Jaeger 연동)
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0  # 100% 샘플링 (개발용)
+  otlp:
+    tracing:
+      endpoint: http://jaeger:4318/v1/traces
+```
+
+#### Docker vs 로컬 환경 비교
+
+| 설정 | 로컬 | Docker |
+|------|------|--------|
+| Kafka 주소 | `localhost:9092` | `kafka:29092` |
+| Schema Registry | `http://localhost:8081` | `http://schema-registry:8081` |
+| 트레이싱 | 비활성화 | Jaeger 연동 |
+| 포트 | 8084 | 8084 |
 
 ---
 
@@ -398,6 +626,154 @@ A: UserSession.kt의 ACTION_WEIGHTS를 수정하세요.
 
 ---
 
+## REST API (프론트엔드 연동)
+
+시뮬레이터는 REST API를 통해 프론트엔드에서 제어할 수 있습니다.
+
+### 기본 정보
+
+| 항목 | 값 |
+|------|-----|
+| Base URL | `/api/v1/simulator` |
+| 포트 | 8084 |
+
+### 엔드포인트
+
+#### GET /api/v1/simulator/status
+
+시뮬레이터 상태를 조회합니다.
+
+**요청**
+```bash
+curl http://localhost:8084/api/v1/simulator/status
+```
+
+**응답**
+```json
+{
+  "isRunning": true,
+  "totalEventsSent": 15234,
+  "userCount": 100,
+  "delayMillis": 1000
+}
+```
+
+#### POST /api/v1/simulator/start
+
+시뮬레이터를 시작합니다.
+
+**파라미터**
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| userCount | Int | 100 | 시뮬레이션할 가상 유저 수 |
+| delayMillis | Long | 1000 | 행동 간 지연 시간 (밀리초) |
+
+**요청**
+```bash
+curl -X POST "http://localhost:8084/api/v1/simulator/start?userCount=50&delayMillis=500"
+```
+
+**응답**
+```json
+{
+  "isRunning": true,
+  "totalEventsSent": 0,
+  "userCount": 100,
+  "delayMillis": 1000
+}
+```
+
+#### POST /api/v1/simulator/stop
+
+시뮬레이터를 정지합니다.
+
+**요청**
+```bash
+curl -X POST http://localhost:8084/api/v1/simulator/stop
+```
+
+**응답**
+```json
+{
+  "isRunning": false,
+  "totalEventsSent": 15234,
+  "userCount": 100,
+  "delayMillis": 1000
+}
+```
+
+### SimulatorController.kt
+
+```kotlin
+@RestController
+@RequestMapping("/api/v1/simulator")
+class SimulatorController(
+    private val trafficSimulator: TrafficSimulator
+) {
+    @GetMapping("/status")
+    fun getStatus(): ResponseEntity<TrafficSimulator.SimulationStatus>
+
+    @PostMapping("/start")
+    fun start(
+        @RequestParam(defaultValue = "100") userCount: Int,
+        @RequestParam(defaultValue = "1000") delayMillis: Long
+    ): ResponseEntity<TrafficSimulator.SimulationStatus>
+
+    @PostMapping("/stop")
+    fun stop(): ResponseEntity<TrafficSimulator.SimulationStatus>
+}
+```
+
+### SimulationStatus 응답 형식
+
+```kotlin
+data class SimulationStatus(
+    val isRunning: Boolean,      // 시뮬레이션 실행 중 여부
+    val totalEventsSent: Long,   // 총 전송된 이벤트 수
+    val userCount: Int,          // 설정된 유저 수
+    val delayMillis: Long        // 설정된 지연 시간
+)
+```
+
+---
+
+## CORS 설정
+
+프론트엔드에서 API를 호출할 수 있도록 CORS가 설정되어 있습니다.
+
+### WebConfig.kt
+
+```kotlin
+@Configuration
+class WebConfig : WebMvcConfigurer {
+
+    override fun addCorsMappings(registry: CorsRegistry) {
+        registry.addMapping("/api/**")
+            .allowedOrigins(
+                "http://localhost:5173",  // Vite 기본 포트
+                "http://localhost:3001",  // 대체 포트
+                "http://localhost:3000",  // 대체 포트
+                "http://frontend:80"      // Docker
+            )
+            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+            .allowedHeaders("*")
+            .allowCredentials(true)
+            .maxAge(3600)
+    }
+}
+```
+
+### 허용된 오리진
+
+| 오리진 | 용도 |
+|--------|------|
+| `http://localhost:5173` | Vite 기본 포트 (Vite 4+) |
+| `http://localhost:3001` | 대체 포트 |
+| `http://localhost:3000` | 대체 포트 |
+| `http://frontend:80` | Docker 컨테이너 간 통신 |
+
+---
+
 ## 핵심 요약
 
 | 항목 | 내용 |
@@ -407,4 +783,5 @@ A: UserSession.kt의 ACTION_WEIGHTS를 수정하세요.
 | 행동 간격 | 1~2초 |
 | 출력 | Kafka 토픽 `user.action.v1` |
 | 핵심 기술 | Virtual Thread (동시성), Avro (직렬화) |
+| REST API | `/api/v1/simulator` (상태조회, 시작, 정지) |
 | 다음 단계 | behavior-consumer가 이 데이터를 소비 |
