@@ -106,6 +106,52 @@
 
 > 문서와 코드가 불일치하면 문서를 먼저 업데이트하고 코드를 수정할 것.
 
+## Git 브랜치 전략
+
+### 규칙
+- **main 브랜치에 직접 커밋 금지** — 항상 브랜치를 생성하고 PR로 머지
+- PR 본문에 변경 사유, 수정 내역, 테스트 방법 기록
+
+### 브랜치 네이밍
+| 접두사 | 용도 | 예시 |
+|--------|------|------|
+| `feat/` | 새 기능 추가 | `feat/notification-history-api` |
+| `fix/` | 버그 수정 | `fix/proxy-port-mismatch` |
+| `chore/` | 설정, 문서, 의존성 등 | `chore/gitignore-cleanup` |
+| `refactor/` | 코드 리팩토링 | `refactor/preference-updater` |
+| `perf/` | 성능 최적화 | `perf/jvm-gc-tuning` |
+
+### 워크플로우
+```
+1. main에서 브랜치 생성: git checkout -b feat/xxx
+2. 작업 후 커밋
+3. 원격에 push: git push -u origin feat/xxx
+4. PR 생성 (main ← feat/xxx)
+5. 리뷰 후 머지
+```
+
+## 서비스 포트 매핑
+
+| 서비스 | 로컬 포트 | Docker 포트 | 비고 |
+|--------|----------|------------|------|
+| Simulator | 8084 | 8084 | |
+| Behavior Consumer | 8085 | 8085 | Schema Registry(8081)와 충돌 방지 |
+| Recommendation API | 8080 | 8082 | |
+| Notification Service | 8083 | 8083 | |
+| Frontend (dev) | 5173 | 3001 | Vite / Nginx |
+| Schema Registry | 8081 | 8081 | |
+| Elasticsearch | 9200 | 9200 | |
+| Redis | 6379 | 6379 | |
+| Embedding Service | 8000 | 8000 | |
+| Prometheus | 9090 | 9090 | |
+| Grafana | 3000 | 3000 | |
+
+## 실행 방식
+- **인프라:** Docker Compose (`docker/docker-compose.yml`)
+- **Spring Boot 앱 4개:** 로컬(IDE/터미널)에서 직접 실행
+- **프론트 개발:** `npm run dev` (Vite, localhost:5173 → 백엔드 프록시)
+- **프론트 프로덕션:** Docker Nginx (localhost:3001 → `host.docker.internal`로 백엔드 프록시)
+
 ## 주요 컴포넌트
 
 ### EmbeddingClient (Phase 3 연동)
