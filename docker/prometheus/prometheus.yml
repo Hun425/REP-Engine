@@ -16,7 +16,7 @@ scrape_configs:
     static_configs:
       - targets:
           - 'simulator:8084'
-          - 'behavior-consumer:8081'
+          - 'behavior-consumer:8085'
           - 'recommendation-api:8082'
           - 'notification-service:8083'
         labels:

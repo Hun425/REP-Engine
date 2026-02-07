@@ -74,7 +74,7 @@ management:
 
 # Server
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${SERVER_PORT:8085}
 
 # Logging
 logging:
@@ -116,7 +116,7 @@ embedding:
     url: http://embedding-service:8000
 
 server:
-  port: 8081
+  port: 8085
 
 # Tracing (Phase 5) - Docker 환경에서 활성화
 management:

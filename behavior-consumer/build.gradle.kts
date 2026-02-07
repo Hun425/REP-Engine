@@ -39,6 +39,9 @@ dependencies {
     // Redis (Phase 3: 유저 취향 벡터 저장)
     implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
 
+    // Cache (Mutex 관리용)
+    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+
     // Logging
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
     implementation("net.logstash.logback:logstash-logback-encoder:8.0")  // Phase 5: JSON 로깅
