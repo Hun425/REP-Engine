@@ -5,11 +5,12 @@ import com.rep.consumer.repository.UserPreferenceRepository
 import com.rep.event.user.UserActionEvent
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
+import com.github.benmanes.caffeine.cache.Caffeine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
 
@@ -37,7 +38,11 @@ class PreferenceUpdater(
 ) {
     // 유저별 Mutex - Lost Update 방지
     // 같은 유저에 대한 동시 업데이트를 직렬화하여 Lost Update 방지
-    private val userLocks = ConcurrentHashMap<String, Mutex>()
+    // Caffeine: 5분간 접근 없는 유저의 Mutex 자동 제거 (메모리 누수 방지)
+    private val userLocks = Caffeine.newBuilder()
+        .expireAfterAccess(5, TimeUnit.MINUTES)
+        .maximumSize(100_000)
+        .build<String, Mutex>()
 
     private val updateSuccessCounter: Counter = Counter.builder("preference.update.success")
         .register(meterRegistry)
@@ -51,10 +56,10 @@ class PreferenceUpdater(
 
     /**
      * 유저별 Mutex를 반환합니다.
-     * ConcurrentHashMap.computeIfAbsent로 thread-safe하게 생성
+     * Caffeine Cache의 get(key, loader)로 thread-safe하게 생성
      */
     private fun getUserLock(userId: String): Mutex =
-        userLocks.computeIfAbsent(userId) { Mutex() }
+        userLocks.get(userId) { Mutex() }
 
     /**
      * 단일 이벤트에 대해 유저 취향 벡터를 갱신합니다.

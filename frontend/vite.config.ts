@@ -14,12 +14,12 @@ export default defineConfig({
   server: {
     port: 3001,
     proxy: {
-      '/api/recommendations': {
-        target: 'http://localhost:8082',
+      '/api/v1/recommendations': {
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      '/api/simulator': {
-        target: 'http://localhost:8080',
+      '/api/v1/simulator': {
+        target: 'http://localhost:8084',
         changeOrigin: true,
       },
     },
