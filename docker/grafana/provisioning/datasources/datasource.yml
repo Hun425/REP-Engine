@@ -4,6 +4,7 @@ datasources:
   # Prometheus - 메트릭 (기본 데이터소스)
   - name: Prometheus
     type: prometheus
+    uid: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true

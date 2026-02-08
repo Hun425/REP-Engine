@@ -207,16 +207,16 @@ export function DashboardPage() {
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
+                    backgroundColor: 'var(--color-card)',
+                    border: '1px solid var(--color-border)',
                     borderRadius: '6px'
                   }}
-                  labelStyle={{ color: 'hsl(var(--foreground))' }}
+                  labelStyle={{ color: 'var(--color-foreground)' }}
                 />
                 <Line
                   type="monotone"
                   dataKey="events"
-                  stroke="hsl(var(--primary))"
+                  stroke="var(--color-primary)"
                   strokeWidth={2}
                   dot={false}
                   name="이벤트/초"

@@ -58,10 +58,10 @@
 
 | 서비스 | 로컬 포트 | Docker 프로파일 포트 | 용도 |
 |--------|----------|---------------------|------|
-| Simulator | 8080 | 8084 | 트래픽 시뮬레이터 API |
-| Behavior Consumer | - | 8081 | Actuator 메트릭 (HTTP 요청 없음) |
+| Simulator | 8084 | 8084 | 트래픽 시뮬레이터 API |
+| Behavior Consumer | 8085 | 8085 | Actuator 메트릭 (HTTP 요청 없음) |
 | Recommendation API | 8080 | 8082 | 추천 API |
-| Notification Service | - | 8083 | Actuator 메트릭 |
+| Notification Service | 8083 | 8083 | Actuator 메트릭 |
 | Frontend | 3001 | 3001 | React 대시보드 |
 
 ### Kafka 포트 구성

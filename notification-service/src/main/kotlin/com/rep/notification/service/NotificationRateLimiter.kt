@@ -9,8 +9,8 @@ import mu.KotlinLogging
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Component
 import java.time.Duration
-import java.time.LocalDateTime
-import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 private val log = KotlinLogging.logger {}
 
@@ -128,15 +128,16 @@ class NotificationRateLimiter(
      * @return true면 발송 가능
      */
     suspend fun canSend(userId: String, productId: String, notificationType: String): Boolean {
-        return shouldSend(userId, productId, notificationType) && checkDailyLimit(userId)
+        return checkDailyLimit(userId) && shouldSend(userId, productId, notificationType)
     }
 
     /**
      * 자정까지 남은 시간을 계산합니다.
      */
     private fun calculateTtlUntilMidnight(): Duration {
-        val now = LocalDateTime.now()
-        val midnight = now.toLocalDate().plusDays(1).atTime(LocalTime.MIDNIGHT)
+        val seoulZone = ZoneId.of("Asia/Seoul")
+        val now = ZonedDateTime.now(seoulZone)
+        val midnight = now.toLocalDate().plusDays(1).atStartOfDay(seoulZone)
         return Duration.between(now, midnight)
     }
 }
