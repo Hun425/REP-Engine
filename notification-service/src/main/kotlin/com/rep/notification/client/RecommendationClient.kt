@@ -5,9 +5,13 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import mu.KotlinLogging
+import io.netty.channel.ChannelOption
+import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.awaitBodyOrNull
+import reactor.netty.http.client.HttpClient
+import java.time.Duration
 
 private val log = KotlinLogging.logger {}
 
@@ -26,6 +30,11 @@ class RecommendationClient(
 ) {
     private val webClient: WebClient = WebClient.builder()
         .baseUrl(properties.recommendation.apiUrl)
+        .clientConnector(ReactorClientHttpConnector(
+            HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .responseTimeout(Duration.ofSeconds(10))
+        ))
         .build()
 
     private val requestCounter = Counter.builder("notification.recommendation_client.request")

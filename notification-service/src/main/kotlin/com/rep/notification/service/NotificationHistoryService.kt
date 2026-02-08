@@ -50,7 +50,9 @@ class NotificationHistoryService(
                 "type" to notification.notificationType.toString(),
                 "title" to notification.title.toString(),
                 "body" to notification.body.toString(),
+                "data" to notification.data.mapKeys { it.key.toString() }.mapValues { it.value.toString() },
                 "channels" to notification.channels.map { it.toString() },
+                "priority" to notification.priority.toString(),
                 "status" to status.name,
                 "sentAt" to Instant.now().toString()  // ISO 8601 형식 (ES date 타입 호환)
             )

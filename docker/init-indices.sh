@@ -118,7 +118,10 @@ curl -X PUT "$ES_HOST/notification_history_index" -H 'Content-Type: application/
       "productId": { "type": "keyword" },
       "type": { "type": "keyword" },
       "title": { "type": "text" },
+      "body": { "type": "text" },
+      "data": { "type": "object", "enabled": false },
       "channels": { "type": "keyword" },
+      "priority": { "type": "keyword" },
       "status": { "type": "keyword" },
       "sentAt": { "type": "date" }
     }

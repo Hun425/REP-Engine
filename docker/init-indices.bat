@@ -26,7 +26,7 @@ curl -X PUT "%ES_HOST%/user_preference_index" -H "Content-Type: application/json
 
 echo.
 
-curl -X PUT "%ES_HOST%/notification_history_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":2,\"number_of_replicas\":0,\"refresh_interval\":\"5s\"},\"mappings\":{\"properties\":{\"notificationId\":{\"type\":\"keyword\"},\"userId\":{\"type\":\"keyword\"},\"productId\":{\"type\":\"keyword\"},\"type\":{\"type\":\"keyword\"},\"title\":{\"type\":\"text\"},\"channels\":{\"type\":\"keyword\"},\"status\":{\"type\":\"keyword\"},\"sentAt\":{\"type\":\"date\"}}}}"
+curl -X PUT "%ES_HOST%/notification_history_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":2,\"number_of_replicas\":0,\"refresh_interval\":\"5s\"},\"mappings\":{\"properties\":{\"notificationId\":{\"type\":\"keyword\"},\"userId\":{\"type\":\"keyword\"},\"productId\":{\"type\":\"keyword\"},\"type\":{\"type\":\"keyword\"},\"title\":{\"type\":\"text\"},\"body\":{\"type\":\"text\"},\"data\":{\"type\":\"object\",\"enabled\":false},\"channels\":{\"type\":\"keyword\"},\"priority\":{\"type\":\"keyword\"},\"status\":{\"type\":\"keyword\"},\"sentAt\":{\"type\":\"date\"}}}}"
 
 echo.
 echo Indices created successfully!

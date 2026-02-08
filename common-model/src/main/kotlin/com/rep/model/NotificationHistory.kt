@@ -16,7 +16,9 @@ data class NotificationHistory(
     val type: String? = null,
     val title: String? = null,
     val body: String? = null,
+    val data: Map<String, String>? = null,
     val channels: List<String>? = null,
+    val priority: String? = null,
     val status: String? = null,
     val sentAt: Instant? = null
 )

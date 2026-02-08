@@ -51,9 +51,9 @@ notification:
     cron: ${RECOMMENDATION_CRON:0 0 9 * * *}
     active-user-days: ${RECOMMENDATION_ACTIVE_USER_DAYS:7}
     limit: ${RECOMMENDATION_LIMIT:3}
-    # 로컬 개발: localhost:8082
+    # 로컬 개발: localhost:8080
     # Docker 환경: docker 프로파일에서 recommendation-api:8082로 오버라이드 (아래 참조)
-    api-url: ${RECOMMENDATION_API_URL:http://localhost:8082}
+    api-url: ${RECOMMENDATION_API_URL:http://localhost:8080}
 
   # DLQ (Dead Letter Queue) 설정
   dlq:

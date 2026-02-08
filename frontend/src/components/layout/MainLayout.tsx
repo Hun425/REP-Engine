@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
@@ -7,8 +8,12 @@ import { cn } from '@/lib/utils'
 export function MainLayout() {
   const { sidebarOpen, theme } = useUIStore()
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+  }, [theme])
+
   return (
-    <div className={cn('min-h-screen bg-background', theme === 'dark' && 'dark')}>
+    <div className="min-h-screen bg-background">
       <Header />
       <Sidebar />
       <main
