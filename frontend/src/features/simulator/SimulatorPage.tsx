@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Square, Loader2, RefreshCw } from 'lucide-react'
+import { Play, Square, Loader2, RefreshCw, Package } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { getSimulatorStatus, startSimulator, stopSimulator } from '@/api/simulator'
+import { getSimulatorStatus, startSimulator, stopSimulator, getInventoryStatus, startInventorySimulator, stopInventorySimulator } from '@/api/simulator'
 import { formatNumber } from '@/lib/utils'
 
 export function SimulatorPage() {
@@ -37,9 +37,35 @@ export function SimulatorPage() {
     },
   })
 
+  // === Inventory Simulator ===
+  const inventoryStatusQuery = useQuery({
+    queryKey: ['simulator', 'inventory', 'status'],
+    queryFn: getInventoryStatus,
+    refetchInterval: 2000,
+    retry: false,
+  })
+
+  const startInventoryMutation = useMutation({
+    mutationFn: startInventorySimulator,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['simulator', 'inventory'] })
+    },
+  })
+
+  const stopInventoryMutation = useMutation({
+    mutationFn: stopInventorySimulator,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['simulator', 'inventory'] })
+    },
+  })
+
   const status = statusQuery.data
-  const isRunning = status?.isRunning ?? false
+  const isRunning = status?.running ?? false
   const isLoading = startMutation.isPending || stopMutation.isPending
+
+  const inventoryStatus = inventoryStatusQuery.data
+  const isInventoryRunning = inventoryStatus?.running ?? false
+  const isInventoryLoading = startInventoryMutation.isPending || stopInventoryMutation.isPending
 
   return (
     <div className="space-y-6">
@@ -193,6 +219,101 @@ export function SimulatorPage() {
         </Card>
       </div>
 
+      {/* 인벤토리 시뮬레이터 */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              인벤토리 시뮬레이터
+            </CardTitle>
+            <CardDescription>가격 변동 / 재입고 이벤트 생성 (Notification Service 연동)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">상태:</span>
+              {inventoryStatusQuery.isError ? (
+                <Badge variant="destructive">연결 실패</Badge>
+              ) : isInventoryRunning ? (
+                <Badge variant="success">● 실행 중</Badge>
+              ) : (
+                <Badge variant="secondary">○ 정지됨</Badge>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              {isInventoryRunning ? (
+                <Button
+                  variant="destructive"
+                  onClick={() => stopInventoryMutation.mutate()}
+                  disabled={isInventoryLoading}
+                  className="flex-1"
+                >
+                  {stopInventoryMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Square className="h-4 w-4 mr-2" />
+                  )}
+                  정지
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => startInventoryMutation.mutate()}
+                  disabled={isInventoryLoading || inventoryStatusQuery.isError}
+                  className="flex-1"
+                >
+                  {startInventoryMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-2" />
+                  )}
+                  시작
+                </Button>
+              )}
+            </div>
+
+            {(startInventoryMutation.isError || stopInventoryMutation.isError) && (
+              <p className="text-sm text-destructive">
+                작업에 실패했습니다. 다시 시도해주세요.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>인벤토리 상태</CardTitle>
+            <CardDescription>가격/재고 변동 이벤트 통계</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {inventoryStatusQuery.isError ? (
+              <p className="text-muted-foreground">데이터를 불러올 수 없습니다</p>
+            ) : inventoryStatus ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">총 발송 이벤트</p>
+                  <p className="text-2xl font-bold">{formatNumber(inventoryStatus.totalEventsSent)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">이벤트 간격</p>
+                  <p className="text-2xl font-bold">{inventoryStatus.intervalMs}ms</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">카탈로그 상품 수</p>
+                  <p className="text-2xl font-bold">{formatNumber(inventoryStatus.catalogSize)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">이벤트 비율</p>
+                  <p className="text-sm font-medium mt-1">가격 변동 70% / 재입고 30%</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground">로딩 중...</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {/* 가이드 */}
       <Card>
         <CardHeader>
@@ -200,10 +321,9 @@ export function SimulatorPage() {
         </CardHeader>
         <CardContent>
           <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-            <li>시뮬레이터는 가상 유저들이 상품을 조회, 클릭, 구매하는 이벤트를 생성합니다</li>
-            <li>이벤트는 Kafka로 전송되어 behavior-consumer에서 처리됩니다</li>
-            <li>유저 취향 벡터가 갱신되면 추천 API에서 개인화된 결과를 받을 수 있습니다</li>
-            <li>시뮬레이터 API가 없다면 백엔드에 SimulatorController를 추가해야 합니다</li>
+            <li>트래픽 시뮬레이터: 유저 행동(조회, 클릭, 구매) 이벤트 → Behavior Consumer</li>
+            <li>인벤토리 시뮬레이터: 가격 변동/재입고 이벤트 → Notification Service</li>
+            <li>두 시뮬레이터는 독립적으로 시작/정지할 수 있습니다</li>
           </ul>
         </CardContent>
       </Card>

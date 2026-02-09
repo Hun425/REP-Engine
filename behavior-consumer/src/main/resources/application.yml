@@ -54,7 +54,7 @@ consumer:
   concurrency: ${CONSUMER_CONCURRENCY:3}
   max-retries: ${CONSUMER_MAX_RETRIES:3}
   retry-delay-ms: ${CONSUMER_RETRY_DELAY_MS:1000}
-  vector-dimensions: 384  # multilingual-e5-base 모델 출력 차원
+  vector-dimensions: ${VECTOR_DIMS:768}  # multilingual-e5-base 모델 출력 차원
 
 # Actuator
 management:

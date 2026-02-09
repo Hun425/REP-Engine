@@ -12,7 +12,8 @@ private val log = KotlinLogging.logger {}
 /**
  * Embedding Service 클라이언트
  *
- * Python Embedding Service를 호출하여 텍스트를 384차원 벡터로 변환합니다.
+ * Python Embedding Service를 호출하여 텍스트를 벡터로 변환합니다.
+ * 벡터 차원은 사용 모델에 따라 결정됩니다 (application.yml의 consumer.vector-dimensions 참조).
  *
  * @see docs/adr-003-embedding-model.md
  */
@@ -30,7 +31,7 @@ class EmbeddingClient(
      *
      * @param texts 변환할 텍스트 목록
      * @param prefix e5 모델용 prefix (query: 또는 passage:)
-     * @return 벡터 목록 (각 벡터는 384차원)
+     * @return 벡터 목록
      */
     suspend fun embed(texts: List<String>, prefix: String = QUERY_PREFIX): List<FloatArray>? {
         if (texts.isEmpty()) return emptyList()
@@ -83,7 +84,7 @@ data class EmbedRequest(
 
 data class EmbedResponse(
     val embeddings: List<List<Float>>,
-    val dims: Int = 384
+    val dims: Int = 768
 )
 
 data class HealthResponse(

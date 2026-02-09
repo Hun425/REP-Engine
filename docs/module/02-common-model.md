@@ -54,7 +54,7 @@ data class ProductDocument(
     val brand: String? = null,            // 브랜드 (예: "Samsung")
     val description: String? = null,      // 상품 설명
     val tags: List<String>? = null,       // 태그 목록 (예: ["신상품", "베스트"])
-    val productVector: List<Float>? = null,  // 상품 벡터 (384개 숫자)
+    val productVector: List<Float>? = null,  // 상품 벡터 (768개 숫자)
     val createdAt: String? = null,        // 등록일
     val updatedAt: String? = null         // 수정일
 ) {
@@ -71,10 +71,10 @@ data class ProductDocument(
 
 #### 상품 벡터(productVector)란?
 
-상품의 특징을 **384개의 숫자**로 표현한 것입니다.
+상품의 특징을 **768개의 숫자**로 표현한 것입니다.
 
 ```
-"고급 가죽 지갑" → [0.12, -0.34, 0.56, ..., 0.78]  (384개 숫자)
+"고급 가죽 지갑" → [0.12, -0.34, 0.56, ..., 0.78]  (768개 숫자)
 "명품 가죽 핸드백" → [0.11, -0.32, 0.54, ..., 0.76]  (비슷한 숫자들!)
 "운동화" → [0.89, 0.12, -0.45, ..., -0.23]  (다른 숫자들)
 ```
@@ -90,7 +90,7 @@ data class ProductDocument(
 
 ```kotlin
 data class UserPreferenceData(
-    val preferenceVector: List<Float>,    // 유저 취향 벡터 (384개 숫자)
+    val preferenceVector: List<Float>,    // 유저 취향 벡터 (768개 숫자)
     val actionCount: Int = 1,             // 누적 행동 수
     val updatedAt: Long = System.currentTimeMillis(),  // 마지막 업데이트 시간
     val version: Long = 1                 // 버전 (Optimistic Locking용)
@@ -296,5 +296,5 @@ data class Person(val name: String, val age: Int)
 | UserPreferenceDocument | 유저 취향 벡터 (ES 백업) |
 | NotificationHistory | 알림 발송 이력 (ES 저장) |
 | SendStatus | 알림 발송 상태 enum |
-| 벡터 차원 | 384개 (multilingual-e5-base 모델) |
+| 벡터 차원 | 768개 (multilingual-e5-base 모델) |
 | 사용 모듈 | behavior-consumer, recommendation-api, notification-service |

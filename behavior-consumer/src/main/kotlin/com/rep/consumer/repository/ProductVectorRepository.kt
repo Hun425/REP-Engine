@@ -2,6 +2,7 @@ package com.rep.consumer.repository
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.elasticsearch.core.GetResponse
+import com.rep.consumer.config.ConsumerProperties
 import com.rep.model.ProductDocument
 import mu.KotlinLogging
 import org.springframework.stereotype.Repository
@@ -17,18 +18,20 @@ private val log = KotlinLogging.logger {}
  */
 @Repository
 class ProductVectorRepository(
-    private val esClient: ElasticsearchClient
+    private val esClient: ElasticsearchClient,
+    private val consumerProperties: ConsumerProperties
 ) {
     companion object {
         private const val INDEX_NAME = "product_index"
-        private const val EXPECTED_DIMENSIONS = 384  // multilingual-e5-base
     }
+
+    private val expectedDimensions: Int get() = consumerProperties.vectorDimensions
 
     /**
      * 상품 ID로 상품 벡터를 조회합니다.
      *
      * @param productId 상품 ID
-     * @return 상품 벡터 (384차원) 또는 null (상품이 없거나 벡터가 없는 경우)
+     * @return 상품 벡터 또는 null (상품이 없거나 벡터가 없는 경우)
      */
     fun getProductVector(productId: String): FloatArray? {
         return try {
@@ -41,8 +44,8 @@ class ProductVectorRepository(
                 val vector = response.source()?.productVector?.toFloatArray()
 
                 // 벡터 차원 검증
-                if (vector != null && vector.size != EXPECTED_DIMENSIONS) {
-                    log.warn { "Product $productId has invalid vector dimension: ${vector.size}, expected: $EXPECTED_DIMENSIONS" }
+                if (vector != null && vector.size != expectedDimensions) {
+                    log.warn { "Product $productId has invalid vector dimension: ${vector.size}, expected: $expectedDimensions" }
                     return null
                 }
 
@@ -80,8 +83,8 @@ class ProductVectorRepository(
                     val vector = source?.productVector?.toFloatArray()
 
                     // 벡터 차원 검증
-                    if (vector != null && vector.size != EXPECTED_DIMENSIONS) {
-                        log.warn { "Product $id has invalid vector dimension: ${vector.size}, expected: $EXPECTED_DIMENSIONS" }
+                    if (vector != null && vector.size != expectedDimensions) {
+                        log.warn { "Product $id has invalid vector dimension: ${vector.size}, expected: $expectedDimensions" }
                         return@mapNotNull null
                     }
 

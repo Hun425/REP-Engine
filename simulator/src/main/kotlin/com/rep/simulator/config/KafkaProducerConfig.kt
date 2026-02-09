@@ -1,5 +1,6 @@
 package com.rep.simulator.config
 
+import com.rep.event.product.ProductInventoryEvent
 import com.rep.event.user.UserActionEvent
 import io.confluent.kafka.serializers.KafkaAvroSerializer
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
@@ -23,8 +24,7 @@ class KafkaProducerConfig(
     private val kafkaProperties: KafkaProperties
 ) {
 
-    @Bean
-    fun producerFactory(): ProducerFactory<String, UserActionEvent> {
+    private fun producerConfigs(): Map<String, Any> {
         val configProps = mutableMapOf<String, Any>()
 
         // Spring Boot의 KafkaProperties에서 기본 설정 로드
@@ -48,11 +48,26 @@ class KafkaProducerConfig(
             }
         }
 
-        return DefaultKafkaProducerFactory(configProps)
+        return configProps
+    }
+
+    @Bean
+    fun producerFactory(): ProducerFactory<String, UserActionEvent> {
+        return DefaultKafkaProducerFactory(producerConfigs())
     }
 
     @Bean
     fun kafkaTemplate(): KafkaTemplate<String, UserActionEvent> {
         return KafkaTemplate(producerFactory())
+    }
+
+    @Bean
+    fun inventoryProducerFactory(): ProducerFactory<String, ProductInventoryEvent> {
+        return DefaultKafkaProducerFactory(producerConfigs())
+    }
+
+    @Bean
+    fun inventoryKafkaTemplate(): KafkaTemplate<String, ProductInventoryEvent> {
+        return KafkaTemplate(inventoryProducerFactory())
     }
 }

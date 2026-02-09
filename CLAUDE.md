@@ -9,7 +9,7 @@
 - **Messaging:** Apache Kafka + Confluent Schema Registry (Avro)
 - **Search:** Elasticsearch 8.11+ (KNN Vector Search)
 - **Cache:** Redis 7.2+
-- **Embedding:** multilingual-e5-base (384 dims)
+- **Embedding:** multilingual-e5-base (768 dims)
 
 ## 프로젝트 구조 (모듈)
 | 모듈 | 용도 |
@@ -62,7 +62,7 @@
 - [ ] `infrastructure.md`의 토픽 목록 업데이트
 
 ### 벡터 관련 구현 시
-- [ ] 벡터 차원: 384 (multilingual-e5-base)
+- [ ] 벡터 차원: 768 (multilingual-e5-base)
 - [ ] 상품 벡터: ES `product_index`에 저장
 - [ ] 유저 취향 벡터: Redis 캐시 (24시간 TTL) + ES 백업
 - [ ] EMA 가중치:
@@ -156,6 +156,6 @@
 
 ### EmbeddingClient (Phase 3 연동)
 - **위치:** `behavior-consumer/src/main/kotlin/com/rep/consumer/client/EmbeddingClient.kt`
-- **용도:** Python Embedding Service 호출 (상품 설명 → 384차원 벡터)
+- **용도:** Python Embedding Service 호출 (상품 설명 → 768차원 벡터)
 - **현재 상태:** Phase 2에서 인터페이스 구현됨, Phase 3에서 실제 서비스 연동 예정
 - **HTTP 엔드포인트:** `POST /embed` (배치 텍스트 → 벡터 변환)

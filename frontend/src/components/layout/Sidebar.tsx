@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Search, Activity, Play } from 'lucide-react'
+import { LayoutDashboard, Search, Activity, Play, GitBranch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/recommendations', label: '추천 검색', icon: Search },
   { to: '/monitoring', label: '모니터링', icon: Activity },
   { to: '/simulator', label: '시뮬레이터', icon: Play },
+  { to: '/pipeline', label: '파이프라인', icon: GitBranch },
 ]
 
 export function Sidebar() {

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Activity, Play, ArrowRight, TrendingUp, Zap } from 'lucide-react'
+import { Search, Activity, Play, ArrowRight, TrendingUp, Zap, Database, Bell, GitBranch } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getSimulatorStatus } from '@/api/simulator'
+import { getBehaviorConsumerHealth, getNotificationHealth } from '@/api/monitoring'
 import { formatNumber } from '@/lib/utils'
 
 // 이벤트 히스토리 타입
@@ -53,8 +54,24 @@ export function DashboardPage() {
     }
   }, [statusQuery.data?.totalEventsSent])
 
+  // Behavior Consumer 헬스 조회
+  const bcHealthQuery = useQuery({
+    queryKey: ['dashboard', 'bc-health'],
+    queryFn: getBehaviorConsumerHealth,
+    refetchInterval: 5000,
+    retry: false,
+  })
+
+  // Notification Service 헬스 조회
+  const nsHealthQuery = useQuery({
+    queryKey: ['dashboard', 'ns-health'],
+    queryFn: getNotificationHealth,
+    refetchInterval: 5000,
+    retry: false,
+  })
+
   const status = statusQuery.data
-  const isRunning = status?.isRunning ?? false
+  const isRunning = status?.running ?? false
   const isConnected = !statusQuery.isError
 
   return (
@@ -68,7 +85,7 @@ export function DashboardPage() {
       </div>
 
       {/* 상태 카드 */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">시스템 상태</CardTitle>
@@ -178,6 +195,62 @@ export function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Consumer</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {bcHealthQuery.isLoading ? (
+              <Skeleton className="h-6 w-20" />
+            ) : !bcHealthQuery.isError ? (
+              <>
+                <Badge variant={bcHealthQuery.data?.status === 'UP' ? 'success' : 'destructive'}>
+                  {bcHealthQuery.data?.status === 'UP' ? 'HEALTHY' : 'DOWN'}
+                </Badge>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Behavior Consumer
+                </p>
+              </>
+            ) : (
+              <>
+                <Badge variant="outline">OFFLINE</Badge>
+                <p className="text-xs text-muted-foreground mt-2">
+                  연결 불가
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Notification</CardTitle>
+            <Bell className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {nsHealthQuery.isLoading ? (
+              <Skeleton className="h-6 w-20" />
+            ) : !nsHealthQuery.isError ? (
+              <>
+                <Badge variant={nsHealthQuery.data?.status === 'UP' ? 'success' : 'destructive'}>
+                  {nsHealthQuery.data?.status === 'UP' ? 'HEALTHY' : 'DOWN'}
+                </Badge>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Notification Service
+                </p>
+              </>
+            ) : (
+              <>
+                <Badge variant="outline">OFFLINE</Badge>
+                <p className="text-xs text-muted-foreground mt-2">
+                  연결 불가
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* 이벤트 트렌드 차트 */}
@@ -241,7 +314,7 @@ export function DashboardPage() {
           <CardTitle>Quick Actions</CardTitle>
           <CardDescription>자주 사용하는 기능에 빠르게 접근하세요</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
+        <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Link to="/recommendations">
             <Button variant="outline" className="w-full justify-between">
               <span className="flex items-center gap-2">
@@ -257,6 +330,16 @@ export function DashboardPage() {
               <span className="flex items-center gap-2">
                 <Play className="h-4 w-4" />
                 시뮬레이터 제어
+              </span>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+
+          <Link to="/pipeline">
+            <Button variant="outline" className="w-full justify-between">
+              <span className="flex items-center gap-2">
+                <GitBranch className="h-4 w-4" />
+                파이프라인 모니터링
               </span>
               <ArrowRight className="h-4 w-4" />
             </Button>

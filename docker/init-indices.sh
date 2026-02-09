@@ -1,6 +1,7 @@
 #!/bin/bash
 
 ES_HOST="http://localhost:9200"
+VECTOR_DIMS="${VECTOR_DIMS:-768}"
 
 echo "Waiting for Elasticsearch to be ready..."
 until curl -s "$ES_HOST/_cluster/health" | grep -q '"status":"green"\|"status":"yellow"'; do
@@ -61,7 +62,7 @@ curl -X PUT "$ES_HOST/product_index" -H 'Content-Type: application/json' -d '
       "tags": { "type": "keyword" },
       "productVector": {
         "type": "dense_vector",
-        "dims": 384,
+        "dims": '"$VECTOR_DIMS"',
         "index": true,
         "similarity": "cosine",
         "index_options": {
@@ -92,7 +93,7 @@ curl -X PUT "$ES_HOST/user_preference_index" -H 'Content-Type: application/json'
       "userId": { "type": "keyword" },
       "preferenceVector": {
         "type": "dense_vector",
-        "dims": 384,
+        "dims": '"$VECTOR_DIMS"',
         "index": false
       },
       "actionCount": { "type": "integer" },

@@ -32,12 +32,12 @@
 | 2 | `docs/infrastructure.md` | Docker Compose 구성, Kafka 토픽, ES 인덱스 정의 |
 | 3 | `docs/adr-001-concurrency-strategy.md` | Coroutines + Virtual Threads 전략 |
 | 4 | `docs/adr-002-schema-registry.md` | Avro 직렬화 & Schema Registry 운영 방식 |
-| 5 | `docs/adr-003-embedding-model.md` | multilingual-e5-base 선택 근거, 384차원 벡터 |
+| 5 | `docs/adr-003-embedding-model.md` | multilingual-e5-base 선택 근거, 768차원 벡터 |
 | 6 | `docs/adr-004-vector-storage.md` | ES + Redis 하이브리드 벡터 저장 전략 |
 
 ### 핵심 포인트
 - Kafka 토픽 3개: `user.action.v1`, `product.inventory.v1`, `notification.push.v1`
-- 벡터 차원: 384 (multilingual-e5-base)
+- 벡터 차원: 768 (multilingual-e5-base)
 - 유저 취향 벡터: Redis(캐시) + ES(백업) 이중 저장
 - 동시성: Coroutines(IO-bound) + Virtual Threads(CPU-bound)
 
@@ -73,7 +73,7 @@
 | 5 | `common-model/src/main/kotlin/com/rep/model/NotificationHistory.kt` | 알림 이력 모델 |
 
 **이해 체크:**
-- [ ] ProductDocument에 벡터 필드(384차원)가 어떻게 정의되어 있는가?
+- [ ] ProductDocument에 벡터 필드(768차원)가 어떻게 정의되어 있는가?
 - [ ] UserPreferenceData와 UserPreferenceDocument의 차이는?
 
 ---
