@@ -542,7 +542,7 @@ curl -X PUT "$ES_HOST/product_index" -H 'Content-Type: application/json' -d '
       "tags": { "type": "keyword" },
       "productVector": {
         "type": "dense_vector",
-        "dims": 384,
+        "dims": 768,
         "index": true,
         "similarity": "cosine",
         "index_options": {
@@ -573,7 +573,7 @@ curl -X PUT "$ES_HOST/user_preference_index" -H 'Content-Type: application/json'
       "userId": { "type": "keyword" },
       "preferenceVector": {
         "type": "dense_vector",
-        "dims": 384,
+        "dims": 768,
         "index": false
       },
       "actionCount": { "type": "integer" },

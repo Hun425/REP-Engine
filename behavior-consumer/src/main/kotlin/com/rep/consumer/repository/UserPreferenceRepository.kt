@@ -60,7 +60,7 @@ class UserPreferenceRepository(
      * ES는 캐시 미스 시 fallback 용도로 사용되며, 24시간 내 갱신됩니다.
      *
      * @param userId 유저 ID
-     * @param vector 취향 벡터 (384차원)
+     * @param vector 취향 벡터
      * @param actionCount 누적 행동 수
      */
     suspend fun save(userId: String, vector: FloatArray, actionCount: Int = 1) {

@@ -23,6 +23,9 @@ simulator:
   topic: user.action.v1
   enabled: ${SIMULATOR_ENABLED:true}
   product-count-per-category: ${SIMULATOR_PRODUCT_COUNT:100}
+  inventory-topic: product.inventory.v1
+  inventory-interval-ms: ${SIMULATOR_INVENTORY_INTERVAL_MS:5000}
+  inventory-enabled: ${SIMULATOR_INVENTORY_ENABLED:true}
 
 # Actuator
 management:

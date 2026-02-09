@@ -8,7 +8,7 @@ export function MonitoringPage() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const grafanaUrl = `${API_URLS.grafana}/d/rep-engine/overview?orgId=1&kiosk`
+  const grafanaUrl = `${API_URLS.grafana}/d/rep-engine-overview/overview?orgId=1&kiosk`
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1)

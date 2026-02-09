@@ -40,7 +40,7 @@ Redis의 벡터 검색 기능 활용
 
 | 장점 | 단점 |
 |-----|-----|
-| 초저지연 읽기/쓰기 | 메모리 비용 높음 (384 dim × 100만 = ~1.5GB) |
+| 초저지연 읽기/쓰기 | 메모리 비용 높음 (768 dim × 100만 = ~3GB) |
 | 실시간 갱신 즉시 반영 | ES 대비 벡터 검색 기능 제한적 |
 | 단순한 구조 | 복잡한 필터 조건 지원 미흡 |
 
@@ -172,7 +172,7 @@ PUT /user_preference_index
       "userId": { "type": "keyword" },
       "preferenceVector": {
         "type": "dense_vector",
-        "dims": 384,
+        "dims": 768,
         "index": false
       },
       "actionCount": { "type": "integer" },
@@ -256,11 +256,11 @@ suspend fun warmUpCache() {
 
 | 항목 | 계산 |
 |-----|-----|
-| 벡터 크기 | 384 dims × 4 bytes = 1,536 bytes |
+| 벡터 크기 | 768 dims × 4 bytes = 3,072 bytes |
 | 메타데이터 (key, timestamp) | ~100 bytes |
 | Redis 오버헤드 | ~50% |
-| **유저당 총 메모리** | ~2.5 KB |
-| **1000만 유저** | ~25 GB |
+| **유저당 총 메모리** | ~4.8 KB |
+| **1000만 유저** | ~48 GB |
 
 권장 Redis 설정: 32GB 메모리, `maxmemory-policy: allkeys-lru`
 

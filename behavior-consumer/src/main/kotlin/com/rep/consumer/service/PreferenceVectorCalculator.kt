@@ -1,5 +1,6 @@
 package com.rep.consumer.service
 
+import com.rep.consumer.config.ConsumerProperties
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
 import kotlin.math.sqrt
@@ -21,8 +22,9 @@ private val log = KotlinLogging.logger {}
  * @see docs/phase%202.md
  */
 @Component
-class PreferenceVectorCalculator {
-
+class PreferenceVectorCalculator(
+    private val consumerProperties: ConsumerProperties
+) {
     companion object {
         // EMA 가중치 (CLAUDE.md 및 Phase 3 문서 기준)
         // 강한 신호
@@ -38,10 +40,9 @@ class PreferenceVectorCalculator {
         // 약한 신호
         const val ALPHA_VIEW = 0.1f           // 조회: 수동적 노출
         const val ALPHA_WISHLIST = 0.1f       // 위시리스트: 나중을 위한 저장
-
-        // 벡터 차원 (multilingual-e5-base)
-        const val EXPECTED_VECTOR_DIMENSIONS = 384
     }
+
+    private val expectedVectorDimensions: Int get() = consumerProperties.vectorDimensions
 
     /**
      * 유저 취향 벡터를 갱신합니다.
@@ -57,12 +58,12 @@ class PreferenceVectorCalculator {
         actionType: String
     ): FloatArray {
         // 벡터 차원 검증
-        require(newProductVector.size == EXPECTED_VECTOR_DIMENSIONS) {
-            "Product vector dimension mismatch: expected=$EXPECTED_VECTOR_DIMENSIONS, actual=${newProductVector.size}"
+        require(newProductVector.size == expectedVectorDimensions) {
+            "Product vector dimension mismatch: expected=$expectedVectorDimensions, actual=${newProductVector.size}"
         }
         if (currentPreference != null) {
-            require(currentPreference.size == EXPECTED_VECTOR_DIMENSIONS) {
-                "Preference vector dimension mismatch: expected=$EXPECTED_VECTOR_DIMENSIONS, actual=${currentPreference.size}"
+            require(currentPreference.size == expectedVectorDimensions) {
+                "Preference vector dimension mismatch: expected=$expectedVectorDimensions, actual=${currentPreference.size}"
             }
         }
 

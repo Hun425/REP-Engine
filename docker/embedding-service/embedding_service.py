@@ -1,7 +1,8 @@
 """
 Embedding Service - multilingual-e5-base
 
-상품 텍스트를 384차원 벡터로 변환하는 임베딩 서비스입니다.
+상품 텍스트를 벡터로 변환하는 임베딩 서비스입니다.
+벡터 차원은 로드된 모델에 의해 자동 결정됩니다 (multilingual-e5-base: 768차원).
 ADR-003에 따라 Self-hosted Sentence-Transformers를 사용합니다.
 
 @see docs/adr-003-embedding-model.md
@@ -32,7 +33,7 @@ class EmbedRequest(BaseModel):
 class EmbedResponse(BaseModel):
     """임베딩 응답"""
     embeddings: List[List[float]]
-    dims: int = 384
+    dims: int = 768
 
 
 class HealthResponse(BaseModel):
@@ -103,7 +104,7 @@ async def embed(request: EmbedRequest):
 
         return EmbedResponse(
             embeddings=embeddings_list,
-            dims=len(embeddings_list[0]) if embeddings_list else 384
+            dims=len(embeddings_list[0]) if embeddings_list else model.get_sentence_embedding_dimension()
         )
 
     except Exception as e:

@@ -1,5 +1,6 @@
 package com.rep.simulator.controller
 
+import com.rep.simulator.service.InventorySimulator
 import com.rep.simulator.service.TrafficSimulator
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -12,7 +13,8 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/simulator")
 class SimulatorController(
-    private val trafficSimulator: TrafficSimulator
+    private val trafficSimulator: TrafficSimulator,
+    private val inventorySimulator: InventorySimulator
 ) {
 
     /**
@@ -42,5 +44,24 @@ class SimulatorController(
     fun stop(): ResponseEntity<TrafficSimulator.SimulationStatus> {
         trafficSimulator.stopSimulation()
         return ResponseEntity.ok(trafficSimulator.getStatus())
+    }
+
+    // === Inventory Simulator ===
+
+    @GetMapping("/inventory/status")
+    fun getInventoryStatus(): ResponseEntity<InventorySimulator.InventorySimulationStatus> {
+        return ResponseEntity.ok(inventorySimulator.getStatus())
+    }
+
+    @PostMapping("/inventory/start")
+    fun startInventory(): ResponseEntity<InventorySimulator.InventorySimulationStatus> {
+        inventorySimulator.startSimulation()
+        return ResponseEntity.ok(inventorySimulator.getStatus())
+    }
+
+    @PostMapping("/inventory/stop")
+    fun stopInventory(): ResponseEntity<InventorySimulator.InventorySimulationStatus> {
+        inventorySimulator.stopSimulation()
+        return ResponseEntity.ok(inventorySimulator.getStatus())
     }
 }

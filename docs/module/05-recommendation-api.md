@@ -712,4 +712,4 @@ curl "http://localhost:8080/api/v1/recommendations/health"
 | 추천 전략 | KNN (개인화), Popularity (Cold Start) |
 | 캐시 | Redis (취향 벡터, 인기 상품) |
 | 검색 | Elasticsearch KNN |
-| 벡터 차원 | 384 (multilingual-e5-base) |
+| 벡터 차원 | 768 (multilingual-e5-base) |

@@ -99,7 +99,7 @@
       "tags": { "type": "keyword" },
       "productVector": {
         "type": "dense_vector",
-        "dims": 384,
+        "dims": 768,
         "index": true,
         "similarity": "cosine",
         "index_options": {
@@ -119,7 +119,7 @@
 
 | 파라미터 | 값 | 근거 |
 |---------|-----|------|
-| `dims` | **384** | multilingual-e5-base 모델 출력 차원. 768이나 1536 대비 인덱스 크기 50% 이상 절감, 검색 속도 향상 |
+| `dims` | **768** | multilingual-e5-base 모델 출력 차원 |
 | `similarity` | **cosine** | 텍스트 임베딩에 가장 적합. 벡터 크기보다 방향(의미)이 중요 |
 | `m` | **16** | HNSW 그래프의 연결 수. 기본값 16이 recall과 속도의 균형점 |
 | `ef_construction` | **100** | 인덱싱 시 탐색 범위. 높을수록 정확하지만 인덱싱 느림. 100은 recall 95%+ 보장 |
@@ -604,7 +604,7 @@ index.knn.algo_param.ef_search: 50  # 검색 시 탐색 범위 (기본 100)
 ```json
 "productVector": {
   "type": "dense_vector",
-  "dims": 384,
+  "dims": 768,
   "index": true,
   "similarity": "cosine",
   "element_type": "byte"  // float → byte 변환, 메모리 75% 절감

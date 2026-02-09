@@ -22,6 +22,26 @@ export default defineConfig({
         target: 'http://localhost:8084',
         changeOrigin: true,
       },
+      '/actuator/simulator': {
+        target: 'http://localhost:8084',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/actuator\/simulator/, '/actuator'),
+      },
+      '/actuator/behavior-consumer': {
+        target: 'http://localhost:8085',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/actuator\/behavior-consumer/, '/actuator'),
+      },
+      '/actuator/recommendation': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/actuator\/recommendation/, '/actuator'),
+      },
+      '/actuator/notification': {
+        target: 'http://localhost:8083',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/actuator\/notification/, '/actuator'),
+      },
     },
   },
 })

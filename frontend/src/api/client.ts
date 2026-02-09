@@ -43,5 +43,9 @@ apiClient.interceptors.response.use(
 export const API_URLS = {
   recommendation: import.meta.env.VITE_RECOMMENDATION_API_URL || '/api/v1/recommendations',
   simulator: import.meta.env.VITE_SIMULATOR_API_URL || '/api/v1/simulator',
+  simulatorActuator: '/actuator/simulator',
+  behaviorConsumer: '/actuator/behavior-consumer',
+  recommendationActuator: '/actuator/recommendation',
+  notification: '/actuator/notification',
   grafana: import.meta.env.VITE_GRAFANA_URL || 'http://localhost:3000',
 }

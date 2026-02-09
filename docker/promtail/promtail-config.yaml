@@ -45,7 +45,7 @@ scrape_configs:
             thread: thread_name
             traceId: traceId
             spanId: spanId
-            timestamp: "@timestamp"
+            timestamp: '"@timestamp"'
             application: application
             exception: stack_trace
       # 라벨로 추출

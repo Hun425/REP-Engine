@@ -378,7 +378,7 @@ class PreferenceVectorCalculator {
 
         // 기존 유저면 EMA 계산
         // 새 취향 = 기존 × (1-α) + 상품 × α
-        val updated = FloatArray(384) { i ->
+        val updated = FloatArray(768) { i ->
             currentPreference[i] * (1 - alpha) + newProductVector[i] * alpha
         }
 
@@ -410,7 +410,7 @@ class PreferenceVectorCalculator {
 
 ### 5. EmbeddingClient.kt (Embedding 서비스 호출)
 
-**역할**: Python Embedding Service를 호출하여 텍스트를 384차원 벡터로 변환
+**역할**: Python Embedding Service를 호출하여 텍스트를 768차원 벡터로 변환
 
 ```kotlin
 @Component
@@ -451,7 +451,7 @@ data class EmbedRequest(
 // 응답
 data class EmbedResponse(
     val embeddings: List<List<Float>>,  // 각 텍스트의 벡터
-    val dims: Int = 384                  // 벡터 차원
+    val dims: Int = 768                  // 벡터 차원
 )
 ```
 
@@ -588,7 +588,7 @@ user:preference:USER-000003  →  {"preferenceVector":[0.5,0.4,...], "actionCoun
 
 ```kotlin
 data class UserPreferenceData(
-    val preferenceVector: List<Float>,  // 384차원 취향 벡터
+    val preferenceVector: List<Float>,  // 768차원 취향 벡터
     val actionCount: Int,               // 누적 행동 수
     val updatedAt: Long,                // 마지막 업데이트 타임스탬프 (밀리초)
     val version: Long                   // 버전 (Optimistic Locking용)
@@ -763,7 +763,7 @@ consumer:
   concurrency: ${CONSUMER_CONCURRENCY:3}       # 동시 처리 스레드 수
   max-retries: ${CONSUMER_MAX_RETRIES:3}       # 최대 재시도 횟수
   retry-delay-ms: ${CONSUMER_RETRY_DELAY_MS:1000}  # 재시도 대기 시간
-  vector-dimensions: 384  # multilingual-e5-base 벡터 차원
+  vector-dimensions: ${VECTOR_DIMS:768}  # multilingual-e5-base 벡터 차원
 
 # Actuator (메트릭 수집용)
 management:
@@ -803,7 +803,7 @@ class ProductVectorRepository(private val esClient: ElasticsearchClient) {
 
 ### 벡터 차원 검증
 
-상품 벡터 조회 시 **384차원 검증**을 수행합니다:
+상품 벡터 조회 시 **벡터 차원 검증**을 수행합니다 (설정값: `consumer.vector-dimensions`):
 
 ```kotlin
 if (vector.size != EXPECTED_DIMENSIONS) {

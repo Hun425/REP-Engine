@@ -70,7 +70,7 @@ REP-Engine의 추천 시스템은 Elasticsearch의 벡터 검색(KNN)을 활용�
 2. **지연 시간:** 로컬 추론으로 네트워크 왕복 시간 제거 (< 10ms vs 100ms+)
 3. **데이터 보안:** 유저 행동 데이터가 외부로 전송되지 않음
 4. **모델 품질:** multilingual-e5-base는 MTEB 벤치마크에서 한국어 성능 상위권
-5. **차원 효율:** 384 차원으로 ES 인덱스 크기와 KNN 검색 속도 최적화
+5. **차원 효율:** 768 차원으로 ES 인덱스 크기와 KNN 검색 속도 최적화
 
 ## 상세 설계 (Implementation)
 
@@ -79,7 +79,7 @@ REP-Engine의 추천 시스템은 Elasticsearch의 벡터 검색(KNN)을 활용�
 | 항목 | 값 |
 |-----|-----|
 | 모델명 | intfloat/multilingual-e5-base |
-| 차원 (dims) | 384 |
+| 차원 (dims) | 768 |
 | 최대 토큰 | 512 |
 | 모델 크기 | ~1.1GB |
 | 추론 속도 (GPU) | ~5ms / request |
@@ -129,7 +129,7 @@ async def embed(request: EmbedRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": "multilingual-e5-base", "dims": 384}
+    return {"status": "ok", "model": "multilingual-e5-base", "dims": 768}
 ```
 
 ### Docker 설정

@@ -35,5 +35,5 @@ data class ConsumerProperties(
 
     // 벡터 설정 (multilingual-e5-base)
     @field:Positive(message = "vectorDimensions must be positive")
-    val vectorDimensions: Int = 384
+    val vectorDimensions: Int = 768
 )

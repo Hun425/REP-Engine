@@ -1,5 +1,5 @@
 import { apiClient, API_URLS } from './client'
-import type { SimulatorStatus, SimulatorStartRequest } from './types'
+import type { SimulatorStatus, SimulatorStartRequest, InventorySimulatorStatus } from './types'
 
 /**
  * 시뮬레이터 상태 조회
@@ -36,6 +36,29 @@ export async function startSimulator(
 export async function stopSimulator(): Promise<SimulatorStatus> {
   const response = await apiClient.post<SimulatorStatus>(
     `${API_URLS.simulator}/stop`
+  )
+  return response.data
+}
+
+// === Inventory Simulator ===
+
+export async function getInventoryStatus(): Promise<InventorySimulatorStatus> {
+  const response = await apiClient.get<InventorySimulatorStatus>(
+    `${API_URLS.simulator}/inventory/status`
+  )
+  return response.data
+}
+
+export async function startInventorySimulator(): Promise<InventorySimulatorStatus> {
+  const response = await apiClient.post<InventorySimulatorStatus>(
+    `${API_URLS.simulator}/inventory/start`
+  )
+  return response.data
+}
+
+export async function stopInventorySimulator(): Promise<InventorySimulatorStatus> {
+  const response = await apiClient.post<InventorySimulatorStatus>(
+    `${API_URLS.simulator}/inventory/stop`
   )
   return response.data
 }

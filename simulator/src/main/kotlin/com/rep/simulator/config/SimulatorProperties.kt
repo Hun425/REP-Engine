@@ -20,5 +20,13 @@ data class SimulatorProperties(
     val enabled: Boolean = true,
 
     @field:Positive(message = "productCountPerCategory must be positive")
-    val productCountPerCategory: Int = 100
+    val productCountPerCategory: Int = 100,
+
+    @field:NotBlank(message = "inventoryTopic must not be blank")
+    val inventoryTopic: String = "product.inventory.v1",
+
+    @field:Positive(message = "inventoryIntervalMs must be positive")
+    val inventoryIntervalMs: Long = 5000,
+
+    val inventoryEnabled: Boolean = true
 )
