@@ -22,6 +22,10 @@ export default defineConfig({
         target: 'http://localhost:8084',
         changeOrigin: true,
       },
+      '/api/v1/load-test': {
+        target: 'http://localhost:8084',
+        changeOrigin: true,
+      },
       '/actuator/simulator': {
         target: 'http://localhost:8084',
         changeOrigin: true,

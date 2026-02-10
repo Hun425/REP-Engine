@@ -27,6 +27,13 @@ simulator:
   inventory-interval-ms: ${SIMULATOR_INVENTORY_INTERVAL_MS:5000}
   inventory-enabled: ${SIMULATOR_INVENTORY_ENABLED:true}
 
+# Load Test settings
+load-test:
+  prometheus-url: ${PROMETHEUS_URL:http://localhost:9090}
+  recommendation-api-url: ${RECOMMENDATION_API_URL:http://localhost:8080}
+  results-dir: ${LOAD_TEST_RESULTS_DIR:./load-test-results}
+  metrics-collect-interval-ms: ${LOAD_TEST_METRICS_INTERVAL:3000}
+
 # Actuator
 management:
   endpoints:
@@ -78,3 +85,24 @@ management:
   otlp:
     tracing:
       endpoint: http://jaeger:4318/v1/traces
+
+---
+spring:
+  config:
+    activate:
+      on-profile: stress
+
+  kafka:
+    producer:
+      properties:
+        linger.ms: 20
+        batch.size: 65536
+
+simulator:
+  user-count: 1000
+  delay-millis: 200
+  inventory-interval-ms: 500
+
+logging:
+  level:
+    com.rep.simulator: INFO

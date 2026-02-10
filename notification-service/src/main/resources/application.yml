@@ -126,3 +126,15 @@ management:
   otlp:
     tracing:
       endpoint: http://jaeger:4318/v1/traces
+
+---
+spring:
+  config:
+    activate:
+      on-profile: stress
+
+notification:
+  batch-size: 200
+  batch-delay-ms: 20
+  daily-limit-per-user: 50
+  price-drop-threshold: 5

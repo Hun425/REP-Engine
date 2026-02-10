@@ -47,5 +47,6 @@ export const API_URLS = {
   behaviorConsumer: '/actuator/behavior-consumer',
   recommendationActuator: '/actuator/recommendation',
   notification: '/actuator/notification',
+  loadTest: '/api/v1/load-test',
   grafana: import.meta.env.VITE_GRAFANA_URL || 'http://localhost:3000',
 }
