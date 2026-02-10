@@ -85,3 +85,19 @@ management:
   otlp:
     tracing:
       endpoint: http://jaeger:4318/v1/traces
+
+---
+spring:
+  config:
+    activate:
+      on-profile: stress
+
+recommendation:
+  cache:
+    popular-ttl-minutes: 30
+    global-cache-size: 200
+    category-cache-size: 100
+
+logging:
+  level:
+    com.rep.recommendation: INFO

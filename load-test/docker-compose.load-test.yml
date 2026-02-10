@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  k6:
+    image: grafana/k6:0.50.0
+    container_name: rep-k6
+    volumes:
+      - ./scripts:/scripts:ro
+    environment:
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true
+    # 기본 실행: docker compose -f docker-compose.load-test.yml run k6 run /scripts/recommendation-load.js
+    # 환경변수 오버라이드:
+    #   ... run -e RECOMMENDATION_URL=http://host.docker.internal:8080 k6 run /scripts/recommendation-load.js
+    #   ... run -e WARM_USER_MAX=500 k6 run /scripts/recommendation-load.js
+    entrypoint: ["k6"]
+
+networks:
+  default:
+    name: rep-network
+    external: true

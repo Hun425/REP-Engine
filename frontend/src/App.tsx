@@ -5,6 +5,7 @@ import { RecommendationsPage } from '@/features/recommendations/RecommendationsP
 import { MonitoringPage } from '@/features/monitoring/MonitoringPage'
 import { SimulatorPage } from '@/features/simulator/SimulatorPage'
 import { PipelinePage } from '@/features/pipeline/PipelinePage'
+import { LoadTestPage } from '@/features/loadtest/LoadTestPage'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
           <Route path="monitoring" element={<MonitoringPage />} />
           <Route path="simulator" element={<SimulatorPage />} />
           <Route path="pipeline" element={<PipelinePage />} />
+          <Route path="load-test" element={<LoadTestPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

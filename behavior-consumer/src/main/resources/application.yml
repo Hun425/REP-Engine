@@ -127,3 +127,26 @@ management:
   otlp:
     tracing:
       endpoint: http://jaeger:4318/v1/traces
+
+---
+spring:
+  config:
+    activate:
+      on-profile: stress
+
+  kafka:
+    consumer:
+      max-poll-records: 1000
+      properties:
+        fetch.min.bytes: 4096
+        fetch.max.wait.ms: 1000
+
+consumer:
+  bulk-size: 1000
+  concurrency: 6
+  max-retries: 2
+  retry-delay-ms: 500
+
+logging:
+  level:
+    com.rep.consumer: INFO

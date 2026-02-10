@@ -1,6 +1,7 @@
 package com.rep.simulator
 
 import com.rep.simulator.config.SimulatorProperties
+import com.rep.simulator.loadtest.LoadTestProperties
 import com.rep.simulator.service.TrafficSimulator
 import mu.KotlinLogging
 import org.springframework.boot.CommandLineRunner
@@ -15,7 +16,7 @@ import org.springframework.stereotype.Component
 private val log = KotlinLogging.logger {}
 
 @SpringBootApplication
-@EnableConfigurationProperties(SimulatorProperties::class)
+@EnableConfigurationProperties(SimulatorProperties::class, LoadTestProperties::class)
 class SimulatorApplication {
 
     @Bean

@@ -20,7 +20,7 @@ class WebConfig : WebMvcConfigurer {
                 "http://localhost:3000",  // 대체 포트
                 "http://frontend:80"      // Docker
             )
-            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+            .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
             .allowedHeaders("*")
             .allowCredentials(true)
             .maxAge(3600)
