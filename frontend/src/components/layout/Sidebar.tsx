@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Search, Activity, Play, GitBranch, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Search, Activity, Play, GitBranch, FlaskConical, Waypoints } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/simulator', label: '시뮬레이터', icon: Play },
   { to: '/pipeline', label: '파이프라인', icon: GitBranch },
   { to: '/load-test', label: '부하 테스트', icon: FlaskConical },
+  { to: '/tracing', label: '트레이싱', icon: Waypoints },
 ]
 
 export function Sidebar() {

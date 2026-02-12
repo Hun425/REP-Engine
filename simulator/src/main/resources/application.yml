@@ -4,6 +4,8 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    template:
+      observation-enabled: true
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
@@ -27,6 +29,22 @@ simulator:
   inventory-interval-ms: ${SIMULATOR_INVENTORY_INTERVAL_MS:5000}
   inventory-enabled: ${SIMULATOR_INVENTORY_ENABLED:true}
 
+# Elasticsearch (트레이싱 이상지점 저장용)
+elasticsearch:
+  host: ${ELASTICSEARCH_HOST:localhost}
+  port: ${ELASTICSEARCH_PORT:9200}
+  scheme: ${ELASTICSEARCH_SCHEME:http}
+
+# Tracing API settings
+tracing:
+  jaeger:
+    query-url: ${JAEGER_QUERY_URL:http://localhost:16686}
+  anomaly:
+    slow-threshold-ms: ${TRACING_SLOW_THRESHOLD_MS:500}
+    error-scan-enabled: ${TRACING_ERROR_SCAN_ENABLED:true}
+    scan-interval-minutes: ${TRACING_SCAN_INTERVAL_MINUTES:5}
+    retention-days: ${TRACING_RETENTION_DAYS:30}
+
 # Load Test settings
 load-test:
   prometheus-url: ${PROMETHEUS_URL:http://localhost:9090}
@@ -46,9 +64,14 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
-  # Tracing (Phase 5) - 로컬에서는 비활성화
+  # Tracing (Phase 5)
   tracing:
-    enabled: false
+    enabled: true
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 # Server
 server:
@@ -75,6 +98,14 @@ spring:
 
 server:
   port: 8084
+
+elasticsearch:
+  host: elasticsearch
+  port: 9200
+
+tracing:
+  jaeger:
+    query-url: http://jaeger:16686
 
 # Tracing (Phase 5) - Docker 환경에서 활성화
 management:

@@ -58,7 +58,9 @@ class KafkaProducerConfig(
 
     @Bean
     fun kafkaTemplate(): KafkaTemplate<String, UserActionEvent> {
-        return KafkaTemplate(producerFactory())
+        return KafkaTemplate(producerFactory()).apply {
+            setObservationEnabled(true)
+        }
     }
 
     @Bean
@@ -68,6 +70,8 @@ class KafkaProducerConfig(
 
     @Bean
     fun inventoryKafkaTemplate(): KafkaTemplate<String, ProductInventoryEvent> {
-        return KafkaTemplate(inventoryProducerFactory())
+        return KafkaTemplate(inventoryProducerFactory()).apply {
+            setObservationEnabled(true)
+        }
     }
 }

@@ -37,6 +37,14 @@ dependencies {
     // Micrometer for metrics
     implementation("io.micrometer:micrometer-registry-prometheus")
 
+    // WebFlux (Jaeger Query API 호출용)
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
+
+    // Elasticsearch (트레이싱 이상지점 저장용)
+    implementation("co.elastic.clients:elasticsearch-java:8.11.0")
+    implementation("com.fasterxml.jackson.core:jackson-databind")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+
     // Distributed Tracing (Phase 5)
     implementation("io.micrometer:micrometer-tracing-bridge-otel")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")

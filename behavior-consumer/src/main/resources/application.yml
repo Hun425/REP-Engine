@@ -10,6 +10,10 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
     consumer:
       group-id: behavior-consumer-group
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -68,9 +72,14 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
-  # Tracing (Phase 5) - 로컬에서는 비활성화
+  # Tracing (Phase 5)
   tracing:
-    enabled: false
+    enabled: true
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 # Server
 server:

@@ -59,6 +59,8 @@ class KafkaConsumerConfig(
             containerProperties.idleBetweenPolls = 100
             // Concurrency 설정 - 병렬 Consumer 수
             setConcurrency(consumerProperties.concurrency)
+            // 분산 트레이싱 Observation 활성화
+            containerProperties.isObservationEnabled = true
         }
     }
 }

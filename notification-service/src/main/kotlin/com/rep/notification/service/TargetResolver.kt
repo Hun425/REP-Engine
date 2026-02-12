@@ -6,6 +6,8 @@ import co.elastic.clients.json.JsonData
 import com.rep.notification.config.NotificationProperties
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.observation.Observation
+import io.micrometer.observation.ObservationRegistry
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
 
@@ -22,7 +24,8 @@ private val log = KotlinLogging.logger {}
 class TargetResolver(
     private val esClient: ElasticsearchClient,
     private val properties: NotificationProperties,
-    meterRegistry: MeterRegistry
+    meterRegistry: MeterRegistry,
+    private val observationRegistry: ObservationRegistry
 ) {
     companion object {
         private const val BEHAVIOR_INDEX = "user_behavior_index"
@@ -49,6 +52,11 @@ class TargetResolver(
         actionTypes: List<String>,
         withinDays: Int = properties.interestedUserDays
     ): List<String> {
+        val observation = Observation.createNotStarted("es.target-resolve", observationRegistry)
+            .lowCardinalityKeyValue("productId", productId)
+            .lowCardinalityKeyValue("actionTypes", actionTypes.joinToString(","))
+        observation.start()
+
         return try {
             queryCounter.increment()
 
@@ -96,10 +104,13 @@ class TargetResolver(
                     "actionTypes=$actionTypes, withinDays=$withinDays"
             }
 
+            observation.stop()
             users
 
         } catch (e: Exception) {
             log.error(e) { "Failed to find interested users for productId=$productId" }
+            observation.error(e)
+            observation.stop()
             emptyList()
         }
     }

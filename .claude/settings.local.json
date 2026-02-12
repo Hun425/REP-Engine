@@ -18,11 +18,7 @@
       "Bash(npx tailwindcss:*)",
       "Bash(npm run build:*)",
       "Bash(xargs:*)",
-      "Bash(wc:*)",
-      "Bash(python -m json.tool:*)",
-      "Bash(python3:*)",
-      "Bash(python:*)",
-      "Bash(node -e:*)"
+      "Bash(gh pr list:*)"
     ]
   }
 }

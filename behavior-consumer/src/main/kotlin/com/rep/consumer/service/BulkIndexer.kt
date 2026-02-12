@@ -8,6 +8,8 @@ import com.rep.event.user.UserActionEvent
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import io.micrometer.observation.Observation
+import io.micrometer.observation.ObservationRegistry
 import java.util.concurrent.TimeUnit
 import jakarta.annotation.PostConstruct
 import kotlinx.coroutines.delay
@@ -36,7 +38,8 @@ class BulkIndexer(
     private val esClient: ElasticsearchClient,
     private val dlqProducer: DlqProducer,
     private val properties: ConsumerProperties,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
+    private val observationRegistry: ObservationRegistry
 ) {
     @Value("\${elasticsearch.index.user-behavior:user_behavior_index}")
     private lateinit var indexName: String
@@ -91,6 +94,11 @@ class BulkIndexer(
     suspend fun indexBatchSync(events: List<UserActionEvent>): Int {
         if (events.isEmpty()) return 0
 
+        val observation = Observation.createNotStarted("es.bulk-index", observationRegistry)
+            .lowCardinalityKeyValue("index", indexName)
+            .lowCardinalityKeyValue("batchSize", events.size.toString())
+        observation.start()
+
         val startTime = System.nanoTime()
 
         log.debug { "Indexing batch of ${events.size} events to $indexName" }
@@ -102,13 +110,14 @@ class BulkIndexer(
                 try {
                     val bulkRequest = buildBulkRequest(events)
                     val response = esClient.bulk(bulkRequest)
-                    return handleBulkResponse(response, events)
+                    val result = handleBulkResponse(response, events)
+                    observation.stop()
+                    return result
                 } catch (e: Exception) {
                     lastException = e
                     retryCounter.increment()
 
                     if (attempt < properties.maxRetries - 1) {
-                        // 지수 백오프: 1초, 2초, 4초, 8초, ...
                         val delayMs = properties.retryDelayMs * (1L shl attempt)
                         log.warn { "Bulk indexing attempt ${attempt + 1}/${properties.maxRetries} failed, retrying in ${delayMs}ms..." }
                         delay(delayMs)
@@ -118,9 +127,11 @@ class BulkIndexer(
 
             // 모든 재시도 실패
             log.error(lastException) { "Bulk indexing failed after ${properties.maxRetries} attempts for ${events.size} events" }
-            bulkBatchFailedCounter.increment()  // 배치 실패 카운트
-            bulkFailedCounter.increment(events.size.toDouble())  // 문서 실패 카운트
+            bulkBatchFailedCounter.increment()
+            bulkFailedCounter.increment(events.size.toDouble())
             sendToDlq(events)
+            lastException?.let { observation.error(it) }
+            observation.stop()
             return 0
         } finally {
             bulkIndexTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS)

@@ -54,6 +54,12 @@
         "logicalType": "timestamp-millis"
       },
       "doc": "이벤트 발생 시각 (epoch millis)"
+    },
+    {
+      "name": "traceId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "분산 추적을 위한 고유 ID"
     }
   ]
 }

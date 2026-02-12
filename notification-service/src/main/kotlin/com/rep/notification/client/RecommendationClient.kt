@@ -26,9 +26,10 @@ private val log = KotlinLogging.logger {}
 @Component
 class RecommendationClient(
     private val properties: NotificationProperties,
-    meterRegistry: MeterRegistry
+    meterRegistry: MeterRegistry,
+    webClientBuilder: WebClient.Builder
 ) {
-    private val webClient: WebClient = WebClient.builder()
+    private val webClient: WebClient = webClientBuilder
         .baseUrl(properties.recommendation.apiUrl)
         .clientConnector(ReactorClientHttpConnector(
             HttpClient.create()

@@ -6,6 +6,7 @@ import { MonitoringPage } from '@/features/monitoring/MonitoringPage'
 import { SimulatorPage } from '@/features/simulator/SimulatorPage'
 import { PipelinePage } from '@/features/pipeline/PipelinePage'
 import { LoadTestPage } from '@/features/loadtest/LoadTestPage'
+import { TracingPage } from '@/features/tracing/TracingPage'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="simulator" element={<SimulatorPage />} />
           <Route path="pipeline" element={<PipelinePage />} />
           <Route path="load-test" element={<LoadTestPage />} />
+          <Route path="tracing" element={<TracingPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
