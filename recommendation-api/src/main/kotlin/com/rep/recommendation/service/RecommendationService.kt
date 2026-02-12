@@ -12,6 +12,8 @@ import com.rep.recommendation.repository.UserPreferenceRepository
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import io.micrometer.observation.Observation
+import io.micrometer.observation.ObservationRegistry
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import java.util.concurrent.TimeUnit
@@ -33,7 +35,8 @@ class RecommendationService(
     private val popularProductsCache: PopularProductsCache,
     private val esClient: ElasticsearchClient,
     private val properties: RecommendationProperties,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
+    private val observationRegistry: ObservationRegistry
 ) {
     companion object {
         private const val PRODUCT_INDEX = "product_index"
@@ -82,6 +85,10 @@ class RecommendationService(
         category: String? = null,
         excludeViewed: Boolean = true
     ): RecommendationResponse {
+        val observation = Observation.createNotStarted("recommendation.search", observationRegistry)
+            .lowCardinalityKeyValue("userId", userId)
+        observation.start()
+
         val startTime = System.nanoTime()
 
         return try {
@@ -94,11 +101,14 @@ class RecommendationService(
                 emptyResultCounter.increment()
             }
 
+            observation.lowCardinalityKeyValue("strategy", result.strategy)
+            observation.stop()
             result.copy(latencyMs = latencyMs)
 
         } catch (e: Exception) {
             log.error(e) { "Failed to get recommendations for userId=$userId" }
             fallbackUsedCounter.increment()
+            observation.error(e)
 
             // 에러 발생 시에도 인기 상품이라도 반환
             val fallbackProducts = try {
@@ -111,6 +121,8 @@ class RecommendationService(
                 emptyResultCounter.increment()
             }
 
+            observation.lowCardinalityKeyValue("strategy", "fallback")
+            observation.stop()
             RecommendationResponse(
                 userId = userId,
                 recommendations = fallbackProducts,
@@ -172,6 +184,11 @@ class RecommendationService(
         category: String?,
         excludeIds: List<String>
     ): List<ProductRecommendation> {
+        val observation = Observation.createNotStarted("es.knn-search", observationRegistry)
+            .lowCardinalityKeyValue("category", category ?: "all")
+            .lowCardinalityKeyValue("k", k.toString())
+        observation.start()
+
         return try {
             // 필터 쿼리 생성
             val filterQueries = mutableListOf<Query>()
@@ -216,7 +233,7 @@ class RecommendationService(
                     }
             }, ProductDocument::class.java)
 
-            response.hits().hits().mapNotNull { hit ->
+            val results = response.hits().hits().mapNotNull { hit ->
                 hit.source()?.let { product ->
                     ProductRecommendation(
                         productId = product.productId ?: hit.id() ?: "",
@@ -228,9 +245,14 @@ class RecommendationService(
                 }
             }
 
+            observation.stop()
+            results
+
         } catch (e: Exception) {
             log.error(e) { "KNN search failed" }
             knnFailedCounter.increment()
+            observation.error(e)
+            observation.stop()
             emptyList()
         }
     }

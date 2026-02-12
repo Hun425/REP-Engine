@@ -44,6 +44,8 @@ class KafkaProducerConfig {
 
     @Bean
     fun kafkaTemplate(): KafkaTemplate<String, UserActionEvent> {
-        return KafkaTemplate(producerFactory())
+        return KafkaTemplate(producerFactory()).apply {
+            setObservationEnabled(true)
+        }
     }
 }

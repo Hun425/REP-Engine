@@ -75,6 +75,7 @@ class ProductCatalog(productCountPerCategory: Int) {
             .setPreviousStock(null)
             .setCurrentStock(null)
             .setTimestamp(Instant.now())
+            .setTraceId(UUID.randomUUID().toString())
             .build()
     }
 
@@ -103,6 +104,7 @@ class ProductCatalog(productCountPerCategory: Int) {
             .setPreviousStock(0)
             .setCurrentStock(newStock)
             .setTimestamp(Instant.now())
+            .setTraceId(UUID.randomUUID().toString())
             .build()
     }
 

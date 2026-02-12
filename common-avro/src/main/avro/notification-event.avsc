@@ -74,6 +74,12 @@
         "logicalType": "timestamp-millis"
       },
       "doc": "알림 생성 시각"
+    },
+    {
+      "name": "traceId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "분산 추적을 위한 고유 ID"
     }
   ]
 }

@@ -29,5 +29,9 @@ echo.
 curl -X PUT "%ES_HOST%/notification_history_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":2,\"number_of_replicas\":0,\"refresh_interval\":\"5s\"},\"mappings\":{\"properties\":{\"notificationId\":{\"type\":\"keyword\"},\"userId\":{\"type\":\"keyword\"},\"productId\":{\"type\":\"keyword\"},\"type\":{\"type\":\"keyword\"},\"title\":{\"type\":\"text\"},\"body\":{\"type\":\"text\"},\"data\":{\"type\":\"object\",\"enabled\":false},\"channels\":{\"type\":\"keyword\"},\"priority\":{\"type\":\"keyword\"},\"status\":{\"type\":\"keyword\"},\"sentAt\":{\"type\":\"date\"}}}}"
 
 echo.
+
+curl -X PUT "%ES_HOST%/trace_anomaly_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0,\"refresh_interval\":\"5s\"},\"mappings\":{\"properties\":{\"traceId\":{\"type\":\"keyword\"},\"type\":{\"type\":\"keyword\"},\"severity\":{\"type\":\"keyword\"},\"serviceName\":{\"type\":\"keyword\"},\"operationName\":{\"type\":\"keyword\"},\"durationMs\":{\"type\":\"long\"},\"thresholdMs\":{\"type\":\"long\"},\"errorMessage\":{\"type\":\"text\"},\"spanCount\":{\"type\":\"integer\"},\"metadata\":{\"type\":\"object\",\"enabled\":false},\"note\":{\"type\":\"text\"},\"isBookmark\":{\"type\":\"boolean\"},\"detectedAt\":{\"type\":\"date\"},\"createdAt\":{\"type\":\"date\"}}}}"
+
+echo.
 echo Indices created successfully!
 curl -s "%ES_HOST%/_cat/indices?v"

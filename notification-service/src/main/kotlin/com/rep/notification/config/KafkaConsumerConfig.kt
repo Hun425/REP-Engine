@@ -112,7 +112,9 @@ class KafkaConsumerConfig(
             KafkaAvroSerializerConfig.AUTO_REGISTER_SCHEMAS to true
         )
         val producerFactory = DefaultKafkaProducerFactory<String, Any>(props)
-        return KafkaTemplate(producerFactory)
+        return KafkaTemplate(producerFactory).apply {
+            setObservationEnabled(true)
+        }
     }
 
     /**
@@ -189,6 +191,8 @@ class KafkaConsumerConfig(
             setCommonErrorHandler(errorHandler)
             isBatchListener = false
             setConcurrency(3)  // product.inventory.v1 파티션 수
+            // 분산 트레이싱 Observation 활성화
+            containerProperties.isObservationEnabled = true
         }
     }
 
@@ -205,6 +209,8 @@ class KafkaConsumerConfig(
             setCommonErrorHandler(errorHandler)
             isBatchListener = false
             setConcurrency(6)  // notification.push.v1 파티션 수
+            // 분산 트레이싱 Observation 활성화
+            containerProperties.isObservationEnabled = true
         }
     }
 }

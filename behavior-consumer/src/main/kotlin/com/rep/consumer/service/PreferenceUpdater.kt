@@ -5,6 +5,8 @@ import com.rep.consumer.repository.UserPreferenceRepository
 import com.rep.event.user.UserActionEvent
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.observation.Observation
+import io.micrometer.observation.ObservationRegistry
 import com.github.benmanes.caffeine.cache.Caffeine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -34,7 +36,8 @@ class PreferenceUpdater(
     private val productVectorRepository: ProductVectorRepository,
     private val userPreferenceRepository: UserPreferenceRepository,
     private val preferenceVectorCalculator: PreferenceVectorCalculator,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
+    private val observationRegistry: ObservationRegistry
 ) {
     // 유저별 Mutex - Lost Update 방지
     // 같은 유저에 대한 동시 업데이트를 직렬화하여 Lost Update 방지
@@ -74,6 +77,11 @@ class PreferenceUpdater(
         val productId = event.productId.toString()
         val actionType = event.actionType.toString()
 
+        val observation = Observation.createNotStarted("preference.update", observationRegistry)
+            .lowCardinalityKeyValue("userId", userId)
+            .lowCardinalityKeyValue("actionType", actionType)
+        observation.start()
+
         return try {
             // 1. 상품 벡터 조회 (락 밖에서 - 다른 유저에게 영향 없음)
             val productVector = productVectorRepository.getProductVector(productId)
@@ -112,11 +120,14 @@ class PreferenceUpdater(
             }
 
             updateSuccessCounter.increment()
+            observation.stop()
             true
 
         } catch (e: Exception) {
             log.error(e) { "Failed to update preference for userId=$userId" }
             updateFailedCounter.increment()
+            observation.error(e)
+            observation.stop()
             false
         }
     }

@@ -22,7 +22,7 @@ class WebClientConfig(
 ) {
 
     @Bean
-    fun embeddingWebClient(): WebClient {
+    fun embeddingWebClient(builder: WebClient.Builder): WebClient {
         val httpClient = HttpClient.create()
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, embeddingProperties.timeoutMs.toInt())
             .responseTimeout(Duration.ofMillis(embeddingProperties.timeoutMs))
@@ -31,7 +31,7 @@ class WebClientConfig(
                 conn.addHandlerLast(WriteTimeoutHandler(embeddingProperties.timeoutMs, TimeUnit.MILLISECONDS))
             }
 
-        return WebClient.builder()
+        return builder
             .baseUrl(embeddingProperties.url)
             .clientConnector(ReactorClientHttpConnector(httpClient))
             .build()

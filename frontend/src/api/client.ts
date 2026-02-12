@@ -48,5 +48,6 @@ export const API_URLS = {
   recommendationActuator: '/actuator/recommendation',
   notification: '/actuator/notification',
   loadTest: '/api/v1/load-test',
+  tracing: '/api/v1/tracing',
   grafana: import.meta.env.VITE_GRAFANA_URL || 'http://localhost:3000',
 }

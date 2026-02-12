@@ -183,6 +183,102 @@ export interface NoteUpdateRequest {
 }
 
 // ============================================
+// Tracing Types
+// ============================================
+
+export interface TraceSummary {
+  traceId: string
+  rootServiceName: string
+  rootOperationName: string
+  durationMs: number
+  spanCount: number
+  serviceCount: number
+  hasError: boolean
+  startTime: number
+}
+
+export interface JaegerTrace {
+  traceID: string
+  spans: JaegerSpan[]
+  processes: Record<string, JaegerProcess>
+}
+
+export interface JaegerSpan {
+  traceID: string
+  spanID: string
+  operationName: string
+  references: SpanReference[]
+  startTime: number
+  duration: number
+  tags: JaegerTag[]
+  logs: JaegerLog[]
+  processID: string
+}
+
+export interface SpanReference {
+  refType: string
+  traceID: string
+  spanID: string
+}
+
+export interface JaegerTag {
+  key: string
+  type: string
+  value: unknown
+}
+
+export interface JaegerLog {
+  timestamp: number
+  fields: JaegerTag[]
+}
+
+export interface JaegerProcess {
+  serviceName: string
+  tags: JaegerTag[]
+}
+
+export interface TraceAnomaly {
+  id: string
+  traceId: string
+  type: AnomalyType
+  severity: Severity
+  serviceName: string
+  operationName: string
+  durationMs: number
+  thresholdMs?: number
+  errorMessage?: string
+  note?: string
+  detectedAt: string
+}
+
+export type AnomalyType = 'SLOW_TRACE' | 'SLOW_SPAN' | 'ERROR_SPAN' | 'DLQ_ROUTED' | 'HIGH_RETRY'
+export type Severity = 'CRITICAL' | 'ERROR' | 'WARNING'
+
+export interface TraceBookmark {
+  id: string
+  traceId: string
+  serviceName: string
+  operationName: string
+  durationMs: number
+  note?: string
+  createdAt: string
+}
+
+export interface CreateBookmarkRequest {
+  traceId: string
+  serviceName: string
+  operationName: string
+  durationMs: number
+  note?: string
+}
+
+export interface AnomalyScanResult {
+  newAnomalies: number
+  totalScanned: number
+  scanDurationMs: number
+}
+
+// ============================================
 // Common Types
 // ============================================
 

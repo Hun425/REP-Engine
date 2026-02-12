@@ -9,6 +9,8 @@ import com.rep.notification.config.NotificationProperties
 import com.rep.notification.repository.ProductRepository
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.observation.Observation
+import io.micrometer.observation.ObservationRegistry
 import kotlinx.coroutines.delay
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
@@ -32,7 +34,8 @@ class EventDetector(
     private val rateLimiter: NotificationRateLimiter,
     private val productRepository: ProductRepository,
     private val properties: NotificationProperties,
-    meterRegistry: MeterRegistry
+    meterRegistry: MeterRegistry,
+    private val observationRegistry: ObservationRegistry
 ) {
 
     private val priceDropDetectedCounter = Counter.builder("notification.event.detected")
@@ -68,6 +71,11 @@ class EventDetector(
         val dropPercentage = ((previousPrice - currentPrice) / previousPrice * 100).toInt()
 
         if (dropPercentage >= properties.priceDropThreshold) {
+            val observation = Observation.createNotStarted("notification.detect-price-drop", observationRegistry)
+                .lowCardinalityKeyValue("productId", event.productId.toString())
+                .lowCardinalityKeyValue("dropPercent", dropPercentage.toString())
+            observation.start()
+
             priceDropDetectedCounter.increment()
             log.info {
                 "Price drop detected: productId=${event.productId}, " +
@@ -119,6 +127,7 @@ class EventDetector(
                         .setChannels(listOf(Channel.PUSH, Channel.IN_APP))
                         .setPriority(Priority.HIGH)
                         .setTimestamp(Instant.now())
+                        .setTraceId(event.traceId?.toString())
                         .build()
 
                     notificationProducer.send(notification)
@@ -136,6 +145,8 @@ class EventDetector(
                 "Price drop notifications sent: productId=${event.productId}, " +
                     "targetUsers=${targetUsers.size}, sent=$sentCount, batches=${batches.size}"
             }
+
+            observation.stop()
         }
     }
 
@@ -150,6 +161,10 @@ class EventDetector(
         val currentStock = event.currentStock ?: return
 
         if (previousStock == 0 && currentStock > 0) {
+            val observation = Observation.createNotStarted("notification.detect-restock", observationRegistry)
+                .lowCardinalityKeyValue("productId", event.productId.toString())
+            observation.start()
+
             restockDetectedCounter.increment()
             log.info { "Restock detected: productId=${event.productId}, stock=$currentStock" }
 
@@ -188,6 +203,7 @@ class EventDetector(
                         .setChannels(listOf(Channel.PUSH, Channel.SMS))
                         .setPriority(Priority.HIGH)
                         .setTimestamp(Instant.now())
+                        .setTraceId(event.traceId?.toString())
                         .build()
 
                     notificationProducer.send(notification)
@@ -205,6 +221,8 @@ class EventDetector(
                 "Restock notifications sent: productId=${event.productId}, " +
                     "targetUsers=${targetUsers.size}, sent=$sentCount, batches=${batches.size}"
             }
+
+            observation.stop()
         }
     }
 }
