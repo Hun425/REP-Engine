@@ -24,7 +24,7 @@ class AnomalyRepository(
         private const val INDEX = "trace_anomaly_index"
     }
 
-    fun save(anomaly: TraceAnomaly): String {
+    fun save(anomaly: TraceAnomaly): String? {
         val id = anomaly.id ?: UUID.randomUUID().toString()
         val doc = mapOf(
             "traceId" to anomaly.traceId,
@@ -43,12 +43,17 @@ class AnomalyRepository(
             "createdAt" to anomaly.createdAt.toEpochMilli()
         )
 
-        esClient.index(
-            IndexRequest.of { r ->
-                r.index(INDEX).id(id).document(doc)
-            }
-        )
-        return id
+        return try {
+            esClient.index(
+                IndexRequest.of { r ->
+                    r.index(INDEX).id(id).document(doc)
+                }
+            )
+            id
+        } catch (e: Exception) {
+            log.error(e) { "Failed to save anomaly: traceId=${anomaly.traceId}, type=${anomaly.type}" }
+            null
+        }
     }
 
     fun searchAnomalies(
@@ -94,7 +99,7 @@ class AnomalyRepository(
             response.hits().hits().mapNotNull { hit ->
                 @Suppress("UNCHECKED_CAST")
                 val source = hit.source() as? Map<String, Any?> ?: return@mapNotNull null
-                mapToAnomaly(hit.id()!!, source)
+                mapToAnomaly(hit.id() ?: return@mapNotNull null, source)
             }
         } catch (e: Exception) {
             log.error(e) { "Failed to search anomalies" }
@@ -147,18 +152,33 @@ class AnomalyRepository(
             "createdAt" to bookmark.createdAt.toEpochMilli()
         )
 
-        esClient.index(IndexRequest.of { r -> r.index(INDEX).id(id).document(doc) })
+        try {
+            esClient.index(IndexRequest.of { r -> r.index(INDEX).id(id).document(doc) })
+        } catch (e: Exception) {
+            log.error(e) { "Failed to save bookmark: traceId=${bookmark.traceId}" }
+            throw e
+        }
         return id
     }
 
     fun deleteBookmark(id: String) {
-        esClient.delete { d -> d.index(INDEX).id(id) }
+        try {
+            esClient.delete { d -> d.index(INDEX).id(id) }
+        } catch (e: Exception) {
+            log.error(e) { "Failed to delete bookmark: id=$id" }
+            throw e
+        }
     }
 
     fun updateBookmarkNote(id: String, note: String) {
-        esClient.update<Map<*, *>, Map<String, Any?>>({ u ->
-            u.index(INDEX).id(id).doc(mapOf("note" to note))
-        }, Map::class.java)
+        try {
+            esClient.update<Map<*, *>, Map<String, Any?>>({ u ->
+                u.index(INDEX).id(id).doc(mapOf("note" to note))
+            }, Map::class.java)
+        } catch (e: Exception) {
+            log.error(e) { "Failed to update bookmark note: id=$id" }
+            throw e
+        }
     }
 
     fun existsByTraceIdAndType(traceId: String, type: AnomalyType): Boolean {
@@ -183,8 +203,18 @@ class AnomalyRepository(
         return TraceAnomaly(
             id = id,
             traceId = source["traceId"]?.toString() ?: "",
-            type = try { AnomalyType.valueOf(source["type"]?.toString() ?: "SLOW_TRACE") } catch (_: Exception) { AnomalyType.SLOW_TRACE },
-            severity = try { Severity.valueOf(source["severity"]?.toString() ?: "WARNING") } catch (_: Exception) { Severity.WARNING },
+            type = try {
+                AnomalyType.valueOf(source["type"]?.toString() ?: "SLOW_TRACE")
+            } catch (e: Exception) {
+                log.warn { "Unknown anomaly type: ${source["type"]}, defaulting to SLOW_TRACE" }
+                AnomalyType.SLOW_TRACE
+            },
+            severity = try {
+                Severity.valueOf(source["severity"]?.toString() ?: "WARNING")
+            } catch (e: Exception) {
+                log.warn { "Unknown severity: ${source["severity"]}, defaulting to WARNING" }
+                Severity.WARNING
+            },
             serviceName = source["serviceName"]?.toString() ?: "",
             operationName = source["operationName"]?.toString() ?: "",
             durationMs = (source["durationMs"] as? Number)?.toLong() ?: 0,

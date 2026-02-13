@@ -89,6 +89,7 @@ class PreferenceUpdater(
             if (productVector == null) {
                 log.debug { "Product vector not found for productId=$productId, skipping preference update" }
                 updateSkippedCounter.increment()
+                observation.stop()
                 return true  // 상품 벡터가 없는 것은 오류가 아님
             }
 

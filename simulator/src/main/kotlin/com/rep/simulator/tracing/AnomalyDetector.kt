@@ -5,6 +5,7 @@ import mu.KotlinLogging
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
 
 private val log = KotlinLogging.logger {}
 
@@ -14,6 +15,8 @@ class AnomalyDetector(
     private val anomalyRepository: AnomalyRepository,
     private val properties: TracingProperties
 ) {
+
+    private val scanning = AtomicBoolean(false)
 
     @Scheduled(fixedDelayString = "300000") // 5 minutes default
     fun scheduledScan() {
@@ -26,6 +29,10 @@ class AnomalyDetector(
     }
 
     fun scan(): AnomalyScanResult {
+        if (!scanning.compareAndSet(false, true)) {
+            log.info { "Anomaly scan already in progress, skipping" }
+            return AnomalyScanResult(newAnomalies = 0, totalScanned = 0, scanDurationMs = 0)
+        }
         val startTime = System.currentTimeMillis()
         var totalScanned = 0
         var newAnomalies = 0
@@ -48,6 +55,8 @@ class AnomalyDetector(
             }
         } catch (e: Exception) {
             log.error(e) { "Anomaly scan failed" }
+        } finally {
+            scanning.set(false)
         }
 
         val duration = System.currentTimeMillis() - startTime
