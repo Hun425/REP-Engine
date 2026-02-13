@@ -138,7 +138,7 @@
 | Behavior Consumer | 8085 | 8085 | Schema Registry(8081)와 충돌 방지 |
 | Recommendation API | 8080 | 8082 | |
 | Notification Service | 8083 | 8083 | |
-| Frontend (dev) | 5173 | 3001 | Vite / Nginx |
+| Frontend (dev) | 3001 | 3001 | Vite / Nginx |
 | Schema Registry | 8081 | 8081 | |
 | Elasticsearch | 9200 | 9200 | |
 | Redis | 6379 | 6379 | |
@@ -149,7 +149,7 @@
 ## 실행 방식
 - **인프라:** Docker Compose (`docker/docker-compose.yml`)
 - **Spring Boot 앱 4개:** 로컬(IDE/터미널)에서 직접 실행
-- **프론트 개발:** `npm run dev` (Vite, localhost:5173 → 백엔드 프록시)
+- **프론트 개발:** `npm run dev` (Vite, localhost:3001 → 백엔드 프록시)
 - **프론트 프로덕션:** Docker Nginx (localhost:3001 → `host.docker.internal`로 백엔드 프록시)
 
 ## 주요 컴포넌트

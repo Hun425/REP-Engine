@@ -1,5 +1,6 @@
 @echo off
 set ES_HOST=http://localhost:9200
+set VECTOR_DIMS=768
 
 echo Waiting for Elasticsearch to be ready...
 :wait_es
@@ -17,12 +18,12 @@ curl -X PUT "%ES_HOST%/user_behavior_index" -H "Content-Type: application/json" 
 echo.
 
 REM product_index - ES 8.x에서는 dense_vector가 자동으로 KNN 검색 지원
-curl -X PUT "%ES_HOST%/product_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0},\"mappings\":{\"properties\":{\"productId\":{\"type\":\"keyword\"},\"productName\":{\"type\":\"text\",\"analyzer\":\"standard\",\"fields\":{\"keyword\":{\"type\":\"keyword\"}}},\"category\":{\"type\":\"keyword\"},\"subCategory\":{\"type\":\"keyword\"},\"price\":{\"type\":\"float\"},\"stock\":{\"type\":\"integer\"},\"brand\":{\"type\":\"keyword\"},\"description\":{\"type\":\"text\"},\"tags\":{\"type\":\"keyword\"},\"productVector\":{\"type\":\"dense_vector\",\"dims\":384,\"index\":true,\"similarity\":\"cosine\",\"index_options\":{\"type\":\"hnsw\",\"m\":16,\"ef_construction\":100}},\"createdAt\":{\"type\":\"date\"},\"updatedAt\":{\"type\":\"date\"}}}}"
+curl -X PUT "%ES_HOST%/product_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0},\"mappings\":{\"properties\":{\"productId\":{\"type\":\"keyword\"},\"productName\":{\"type\":\"text\",\"analyzer\":\"standard\",\"fields\":{\"keyword\":{\"type\":\"keyword\"}}},\"category\":{\"type\":\"keyword\"},\"subCategory\":{\"type\":\"keyword\"},\"price\":{\"type\":\"float\"},\"stock\":{\"type\":\"integer\"},\"brand\":{\"type\":\"keyword\"},\"description\":{\"type\":\"text\"},\"tags\":{\"type\":\"keyword\"},\"productVector\":{\"type\":\"dense_vector\",\"dims\":%VECTOR_DIMS%,\"index\":true,\"similarity\":\"cosine\",\"index_options\":{\"type\":\"hnsw\",\"m\":16,\"ef_construction\":100}},\"createdAt\":{\"type\":\"date\"},\"updatedAt\":{\"type\":\"date\"}}}}"
 
 echo.
 
 REM user_preference_index - ADR-004: KNN 인덱스 불필요 (백업용)
-curl -X PUT "%ES_HOST%/user_preference_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0,\"refresh_interval\":\"60s\"},\"mappings\":{\"properties\":{\"userId\":{\"type\":\"keyword\"},\"preferenceVector\":{\"type\":\"dense_vector\",\"dims\":384,\"index\":false},\"actionCount\":{\"type\":\"integer\"},\"updatedAt\":{\"type\":\"date\"}}}}"
+curl -X PUT "%ES_HOST%/user_preference_index" -H "Content-Type: application/json" -d "{\"settings\":{\"number_of_shards\":1,\"number_of_replicas\":0,\"refresh_interval\":\"60s\"},\"mappings\":{\"properties\":{\"userId\":{\"type\":\"keyword\"},\"preferenceVector\":{\"type\":\"dense_vector\",\"dims\":%VECTOR_DIMS%,\"index\":false},\"actionCount\":{\"type\":\"integer\"},\"updatedAt\":{\"type\":\"date\"}}}}"
 
 echo.
 

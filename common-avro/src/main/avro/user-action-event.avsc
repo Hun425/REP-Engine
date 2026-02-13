@@ -6,7 +6,8 @@
   "fields": [
     {
       "name": "traceId",
-      "type": "string",
+      "type": ["null", "string"],
+      "default": null,
       "doc": "분산 추적을 위한 고유 ID"
     },
     {

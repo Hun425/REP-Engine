@@ -10,6 +10,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.observation.Observation
 import io.micrometer.observation.ObservationRegistry
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import jakarta.annotation.PostConstruct
 import kotlinx.coroutines.delay
@@ -149,9 +150,9 @@ class BulkIndexer(
             bulkRequest.operations { op ->
                 op.index { idx ->
                     idx.index(indexName)
-                        .id(event.traceId.toString())  // Idempotency 보장
+                        .id(event.traceId?.toString() ?: UUID.randomUUID().toString())  // Idempotency 보장
                         .document(mapOf(
-                            "traceId" to event.traceId.toString(),
+                            "traceId" to (event.traceId?.toString() ?: ""),
                             "userId" to event.userId.toString(),
                             "productId" to event.productId.toString(),
                             "category" to event.category.toString(),
