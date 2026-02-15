@@ -66,7 +66,7 @@ class EventDetector(
         val previousPrice = event.previousPrice ?: return
         val currentPrice = event.currentPrice ?: return
 
-        if (previousPrice <= 0) return
+        if (previousPrice <= 0 || currentPrice < 0) return
 
         val dropPercentage = ((previousPrice - currentPrice) / previousPrice * 100).toInt()
 

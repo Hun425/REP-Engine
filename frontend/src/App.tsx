@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { MainLayout } from '@/components/layout/MainLayout'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { RecommendationsPage } from '@/features/recommendations/RecommendationsPage'
@@ -10,19 +11,21 @@ import { TracingPage } from '@/features/tracing/TracingPage'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="recommendations" element={<RecommendationsPage />} />
-          <Route path="monitoring" element={<MonitoringPage />} />
-          <Route path="simulator" element={<SimulatorPage />} />
-          <Route path="pipeline" element={<PipelinePage />} />
-          <Route path="load-test" element={<LoadTestPage />} />
-          <Route path="tracing" element={<TracingPage />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<MainLayout />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="recommendations" element={<RecommendationsPage />} />
+            <Route path="monitoring" element={<MonitoringPage />} />
+            <Route path="simulator" element={<SimulatorPage />} />
+            <Route path="pipeline" element={<PipelinePage />} />
+            <Route path="load-test" element={<LoadTestPage />} />
+            <Route path="tracing" element={<TracingPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 
