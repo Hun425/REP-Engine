@@ -17,8 +17,5 @@ data class EmbeddingProperties(
     val url: String = "http://localhost:8000",
 
     @field:Positive(message = "timeoutMs must be positive")
-    val timeoutMs: Long = 5000,
-
-    @field:Positive(message = "batchSize must be positive")
-    val batchSize: Int = 32
+    val timeoutMs: Long = 5000
 )

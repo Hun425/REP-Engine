@@ -18,7 +18,7 @@ class AnomalyDetector(
 
     private val scanning = AtomicBoolean(false)
 
-    @Scheduled(fixedDelayString = "300000") // 5 minutes default
+    @Scheduled(fixedDelayString = "#{${tracing.anomaly.scan-interval-minutes:5} * 60000}")
     fun scheduledScan() {
         if (!properties.anomaly.errorScanEnabled) return
         try {

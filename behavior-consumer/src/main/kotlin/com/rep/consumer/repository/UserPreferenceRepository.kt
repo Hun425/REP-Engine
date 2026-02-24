@@ -171,7 +171,7 @@ class UserPreferenceRepository(
             log.debug { "Backed up preference vector for userId=$userId to ES (version=$updatedAt)" }
         } catch (e: co.elastic.clients.elasticsearch._types.ElasticsearchException) {
             // VersionConflictEngineException: 이미 더 최신 버전이 있음 (정상 상황)
-            if (e.message?.contains("version_conflict_engine_exception") == true) {
+            if (e.response().status() == 409) {
                 log.debug { "ES backup skipped for userId=$userId: newer version already exists" }
             } else {
                 log.warn(e) { "Failed to backup preference vector to ES for userId=$userId" }

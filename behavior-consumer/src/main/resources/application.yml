@@ -48,7 +48,6 @@ embedding:
   service:
     url: ${EMBEDDING_SERVICE_URL:http://localhost:8000}
     timeout-ms: 5000
-    batch-size: 32
 
 # Consumer 설정
 consumer:

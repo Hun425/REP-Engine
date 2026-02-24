@@ -19,7 +19,9 @@
       "Bash(npm run build:*)",
       "Bash(xargs:*)",
       "Bash(gh pr list:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(brew list:*)"
     ]
   }
 }

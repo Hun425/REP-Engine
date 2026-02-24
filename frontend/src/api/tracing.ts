@@ -1,14 +1,12 @@
-import { apiClient } from './client'
+import { apiClient, API_URLS } from './client'
 import type {
   TraceSummary, JaegerTrace, TraceAnomaly, AnomalyType,
   TraceBookmark, CreateBookmarkRequest, AnomalyScanResult
 } from './types'
 
-const BASE = '/api/v1/tracing'
-
 // Trace Query
 export const getServices = () =>
-  apiClient.get<string[]>(`${BASE}/services`).then(r => r.data)
+  apiClient.get<string[]>(`${API_URLS.tracing}/services`).then(r => r.data)
 
 export const searchTraces = (params: {
   service?: string
@@ -18,10 +16,10 @@ export const searchTraces = (params: {
   start?: number
   end?: number
 }) =>
-  apiClient.get<TraceSummary[]>(`${BASE}/traces`, { params }).then(r => r.data)
+  apiClient.get<TraceSummary[]>(`${API_URLS.tracing}/traces`, { params }).then(r => r.data)
 
 export const getTraceDetail = (traceId: string) =>
-  apiClient.get<JaegerTrace>(`${BASE}/traces/${traceId}`).then(r => r.data)
+  apiClient.get<JaegerTrace>(`${API_URLS.tracing}/traces/${traceId}`).then(r => r.data)
 
 // Anomalies
 export const getAnomalies = (params: {
@@ -32,20 +30,20 @@ export const getAnomalies = (params: {
   page?: number
   size?: number
 }) =>
-  apiClient.get<TraceAnomaly[]>(`${BASE}/anomalies`, { params }).then(r => r.data)
+  apiClient.get<TraceAnomaly[]>(`${API_URLS.tracing}/anomalies`, { params }).then(r => r.data)
 
 export const triggerAnomalyScan = () =>
-  apiClient.post<AnomalyScanResult>(`${BASE}/anomalies/detect`).then(r => r.data)
+  apiClient.post<AnomalyScanResult>(`${API_URLS.tracing}/anomalies/detect`).then(r => r.data)
 
 // Bookmarks
 export const getBookmarks = () =>
-  apiClient.get<TraceBookmark[]>(`${BASE}/bookmarks`).then(r => r.data)
+  apiClient.get<TraceBookmark[]>(`${API_URLS.tracing}/bookmarks`).then(r => r.data)
 
 export const addBookmark = (data: CreateBookmarkRequest) =>
-  apiClient.post<{ id: string }>(`${BASE}/bookmarks`, data).then(r => r.data)
+  apiClient.post<{ id: string }>(`${API_URLS.tracing}/bookmarks`, data).then(r => r.data)
 
 export const deleteBookmark = (id: string) =>
-  apiClient.delete(`${BASE}/bookmarks/${id}`)
+  apiClient.delete(`${API_URLS.tracing}/bookmarks/${id}`)
 
 export const updateBookmarkNote = (id: string, note: string) =>
-  apiClient.patch(`${BASE}/bookmarks/${id}`, { note })
+  apiClient.patch(`${API_URLS.tracing}/bookmarks/${id}`, { note })

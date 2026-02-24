@@ -41,9 +41,9 @@ data class ProductDocument(
     }
 
     /**
-     * KNN 검색 가능 여부 (벡터 존재 확인)
+     * KNN 검색 가능 여부 (벡터 존재 + 768차원 확인)
      */
     fun hasVector(): Boolean {
-        return productVector != null && productVector.isNotEmpty()
+        return productVector != null && productVector.size == UserPreferenceData.VECTOR_DIMENSIONS
     }
 }

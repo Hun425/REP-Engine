@@ -33,7 +33,7 @@ class PushSenderSimulator(
         .description("Push notifications sent (simulated)")
         .register(meterRegistry)
 
-    private val channelCounters = mutableMapOf<String, Counter>()
+    private val channelCounters = java.util.concurrent.ConcurrentHashMap<String, Counter>()
 
     @KafkaListener(
         topics = ["\${notification.notification-topic}"],

@@ -16,5 +16,15 @@ data class UserPreferenceData(
     val updatedAt: Long = System.currentTimeMillis(),
     val version: Long = 1
 ) {
+    companion object {
+        const val VECTOR_DIMENSIONS = 768
+    }
+
+    init {
+        require(preferenceVector.size == VECTOR_DIMENSIONS) {
+            "preferenceVector must have $VECTOR_DIMENSIONS dimensions, got ${preferenceVector.size}"
+        }
+    }
+
     fun toFloatArray(): FloatArray = preferenceVector.toFloatArray()
 }
