@@ -11,10 +11,7 @@ export const apiClient = axios.create({
 // Request 인터셉터 (로깅, 인증 토큰 추가 등)
 apiClient.interceptors.request.use(
   (config) => {
-    // 개발 환경에서 요청 로깅
-    if (import.meta.env.DEV) {
-      console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`)
-    }
+    // 개발 환경 요청 로그는 브라우저 네트워크 탭으로 확인합니다.
     return config
   },
   (error) => {

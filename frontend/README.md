@@ -1,5 +1,9 @@
 # React + TypeScript + Vite
 
+## Runtime Requirement
+
+- Node.js `20.19+` or `22.12+` (see `.nvmrc`)
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
