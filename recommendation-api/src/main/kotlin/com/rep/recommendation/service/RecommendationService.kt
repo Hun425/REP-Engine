@@ -3,8 +3,8 @@ package com.rep.recommendation.service
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.elasticsearch._types.query_dsl.Query
 import co.elastic.clients.json.JsonData
-import com.rep.recommendation.config.RecommendationProperties
 import com.rep.model.ProductDocument
+import com.rep.recommendation.config.RecommendationProperties
 import com.rep.recommendation.model.ProductRecommendation
 import com.rep.recommendation.model.RecommendationResponse
 import com.rep.recommendation.repository.UserBehaviorRepository
@@ -15,6 +15,7 @@ import io.micrometer.core.instrument.Timer
 import io.micrometer.observation.Observation
 import io.micrometer.observation.ObservationRegistry
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.util.concurrent.TimeUnit
 
@@ -26,7 +27,7 @@ private val log = KotlinLogging.logger {}
  * 유저의 취향 벡터를 기반으로 KNN 검색을 수행하여 개인화된 상품을 추천합니다.
  * Cold Start 유저에게는 인기 상품을 추천합니다.
  *
- * @see docs/phase%203.md
+ * @see docs/phase 3.md
  */
 @Service
 class RecommendationService(
@@ -36,39 +37,52 @@ class RecommendationService(
     private val esClient: ElasticsearchClient,
     private val properties: RecommendationProperties,
     private val meterRegistry: MeterRegistry,
-    private val observationRegistry: ObservationRegistry
+    private val observationRegistry: ObservationRegistry,
 ) {
-    companion object {
-        private const val PRODUCT_INDEX = "product_index"
-    }
+    @Value("\${elasticsearch.index.product:product_index}")
+    private lateinit var productIndex: String
 
-    private val latencyTimer = Timer.builder("recommendation.latency")
-        .description("Recommendation API latency")
-        .register(meterRegistry)
+    private val latencyTimer =
+        Timer
+            .builder("recommendation.latency")
+            .description("Recommendation API latency")
+            .register(meterRegistry)
 
-    private val knnCounter = Counter.builder("recommendation.strategy")
-        .tag("type", "knn")
-        .register(meterRegistry)
+    private val knnCounter =
+        Counter
+            .builder("recommendation.strategy")
+            .tag("type", "knn")
+            .register(meterRegistry)
 
-    private val popularityCounter = Counter.builder("recommendation.strategy")
-        .tag("type", "popularity")
-        .register(meterRegistry)
+    private val popularityCounter =
+        Counter
+            .builder("recommendation.strategy")
+            .tag("type", "popularity")
+            .register(meterRegistry)
 
-    private val categoryBestCounter = Counter.builder("recommendation.strategy")
-        .tag("type", "category_best")
-        .register(meterRegistry)
+    private val categoryBestCounter =
+        Counter
+            .builder("recommendation.strategy")
+            .tag("type", "category_best")
+            .register(meterRegistry)
 
-    private val knnFailedCounter = Counter.builder("recommendation.knn.failed")
-        .description("KNN search failures")
-        .register(meterRegistry)
+    private val knnFailedCounter =
+        Counter
+            .builder("recommendation.knn.failed")
+            .description("KNN search failures")
+            .register(meterRegistry)
 
-    private val fallbackUsedCounter = Counter.builder("recommendation.fallback.used")
-        .description("Fallback to popular products due to error")
-        .register(meterRegistry)
+    private val fallbackUsedCounter =
+        Counter
+            .builder("recommendation.fallback.used")
+            .description("Fallback to popular products due to error")
+            .register(meterRegistry)
 
-    private val emptyResultCounter = Counter.builder("recommendation.result.empty")
-        .description("Empty recommendation results")
-        .register(meterRegistry)
+    private val emptyResultCounter =
+        Counter
+            .builder("recommendation.result.empty")
+            .description("Empty recommendation results")
+            .register(meterRegistry)
 
     /**
      * 유저에게 개인화된 상품을 추천합니다.
@@ -83,10 +97,12 @@ class RecommendationService(
         userId: String,
         limit: Int = 10,
         category: String? = null,
-        excludeViewed: Boolean = true
+        excludeViewed: Boolean = true,
     ): RecommendationResponse {
-        val observation = Observation.createNotStarted("recommendation.search", observationRegistry)
-            .lowCardinalityKeyValue("userId", userId)
+        val observation =
+            Observation
+                .createNotStarted("recommendation.search", observationRegistry)
+                .lowCardinalityKeyValue("userId", userId)
         observation.start()
 
         val startTime = System.nanoTime()
@@ -104,18 +120,18 @@ class RecommendationService(
             observation.lowCardinalityKeyValue("strategy", result.strategy)
             observation.stop()
             result.copy(latencyMs = latencyMs)
-
         } catch (e: Exception) {
             log.error(e) { "Failed to get recommendations for userId=$userId" }
             fallbackUsedCounter.increment()
             observation.error(e)
 
             // 에러 발생 시에도 인기 상품이라도 반환
-            val fallbackProducts = try {
-                popularProductsCache.getTopProducts(limit)
-            } catch (e2: Exception) {
-                emptyList()
-            }
+            val fallbackProducts =
+                try {
+                    popularProductsCache.getTopProducts(limit)
+                } catch (e2: Exception) {
+                    emptyList()
+                }
 
             if (fallbackProducts.isEmpty()) {
                 emptyResultCounter.increment()
@@ -127,7 +143,7 @@ class RecommendationService(
                 userId = userId,
                 recommendations = fallbackProducts,
                 strategy = "fallback",
-                latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime)
+                latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime),
             )
         }
     }
@@ -136,42 +152,46 @@ class RecommendationService(
         userId: String,
         limit: Int,
         category: String?,
-        excludeViewed: Boolean
+        excludeViewed: Boolean,
     ): RecommendationResponse {
         // 1. 유저 취향 벡터 조회
         val preferenceVector = userPreferenceRepository.get(userId)
 
         // 2. 전략 결정 및 추천 실행
-        val (products, strategy) = if (preferenceVector == null) {
-            // Cold Start: 인기 상품 반환
-            if (category != null) {
-                log.debug { "Cold start with category filter for userId=$userId, using category_best strategy" }
-                categoryBestCounter.increment()
-                Pair(getColdStartRecommendations(limit, category), "category_best")
+        val (products, strategy) =
+            if (preferenceVector == null) {
+                // Cold Start: 인기 상품 반환
+                if (category != null) {
+                    log.debug { "Cold start with category filter for userId=$userId, using category_best strategy" }
+                    categoryBestCounter.increment()
+                    Pair(getColdStartRecommendations(limit, category), "category_best")
+                } else {
+                    log.debug { "Cold start for userId=$userId, using popularity strategy" }
+                    popularityCounter.increment()
+                    Pair(getColdStartRecommendations(limit, category), "popularity")
+                }
             } else {
-                log.debug { "Cold start for userId=$userId, using popularity strategy" }
-                popularityCounter.increment()
-                Pair(getColdStartRecommendations(limit, category), "popularity")
-            }
-        } else {
-            // KNN 검색
-            log.debug { "Using KNN strategy for userId=$userId" }
-            knnCounter.increment()
-            val excludeIds = if (excludeViewed) {
-                userBehaviorRepository.getRecentViewedProducts(userId, 100)
-            } else emptyList()
+                // KNN 검색
+                log.debug { "Using KNN strategy for userId=$userId" }
+                knnCounter.increment()
+                val excludeIds =
+                    if (excludeViewed) {
+                        userBehaviorRepository.getRecentViewedProducts(userId, 100)
+                    } else {
+                        emptyList()
+                    }
 
-            Pair(
-                searchSimilarProducts(preferenceVector, limit, category, excludeIds),
-                "knn"
-            )
-        }
+                Pair(
+                    searchSimilarProducts(preferenceVector, limit, category, excludeIds),
+                    "knn",
+                )
+            }
 
         return RecommendationResponse(
             userId = userId,
             recommendations = products,
             strategy = strategy,
-            latencyMs = 0  // 나중에 설정됨
+            latencyMs = 0, // 나중에 설정됨
         )
     }
 
@@ -182,11 +202,13 @@ class RecommendationService(
         queryVector: FloatArray,
         k: Int,
         category: String?,
-        excludeIds: List<String>
+        excludeIds: List<String>,
     ): List<ProductRecommendation> {
-        val observation = Observation.createNotStarted("es.knn-search", observationRegistry)
-            .lowCardinalityKeyValue("category", category ?: "all")
-            .lowCardinalityKeyValue("k", k.toString())
+        val observation =
+            Observation
+                .createNotStarted("es.knn-search", observationRegistry)
+                .lowCardinalityKeyValue("category", category ?: "all")
+                .lowCardinalityKeyValue("k", k.toString())
         observation.start()
 
         return try {
@@ -195,59 +217,67 @@ class RecommendationService(
 
             // 카테고리 필터
             if (category != null) {
-                filterQueries.add(Query.of { q ->
-                    q.term { t -> t.field("category").value(category) }
-                })
+                filterQueries.add(
+                    Query.of { q ->
+                        q.term { t -> t.field("category").value(category) }
+                    },
+                )
             }
 
             // 이미 본 상품 제외
             if (excludeIds.isNotEmpty()) {
-                filterQueries.add(Query.of { q ->
-                    q.bool { b ->
-                        b.mustNot { mn -> mn.ids { ids -> ids.values(excludeIds) } }
-                    }
-                })
+                filterQueries.add(
+                    Query.of { q ->
+                        q.bool { b ->
+                            b.mustNot { mn -> mn.ids { ids -> ids.values(excludeIds) } }
+                        }
+                    },
+                )
             }
 
             // 재고 있는 상품만
-            filterQueries.add(Query.of { q ->
-                q.range { r -> r.field("stock").gt(JsonData.of(0)) }
-            })
+            filterQueries.add(
+                Query.of { q ->
+                    q.range { r -> r.field("stock").gt(JsonData.of(0)) }
+                },
+            )
 
             // queryVector를 List<Float>로 변환
             val queryVectorList: List<Float> = queryVector.toList()
 
-            val response = esClient.search({ s ->
-                s.index(PRODUCT_INDEX)
-                    .knn { knn ->
-                        knn.field("productVector")
-                            .queryVector(queryVectorList)
-                            .k(k.toLong())
-                            .numCandidates((k * 10).toLong())  // 문서 권장: num_candidates = k * 10
-                            .filter(filterQueries)
-                    }
-                    .source { src ->
-                        src.filter { filter ->
-                            filter.includes("productId", "productName", "category", "price")
+            val response =
+                esClient.search({ s ->
+                    s
+                        .index(productIndex)
+                        .knn { knn ->
+                            knn
+                                .field("productVector")
+                                .queryVector(queryVectorList)
+                                .k(k.toLong())
+                                .numCandidates((k * 10).toLong()) // 문서 권장: num_candidates = k * 10
+                                .filter(filterQueries)
+                        }.source { src ->
+                            src.filter { filter ->
+                                filter.includes("productId", "productName", "category", "price")
+                            }
                         }
-                    }
-            }, ProductDocument::class.java)
+                }, ProductDocument::class.java)
 
-            val results = response.hits().hits().mapNotNull { hit ->
-                hit.source()?.let { product ->
-                    ProductRecommendation(
-                        productId = product.productId ?: hit.id() ?: "",
-                        productName = product.productName ?: "",
-                        category = product.category ?: "",
-                        price = product.price ?: 0f,
-                        score = hit.score() ?: 0.0
-                    )
+            val results =
+                response.hits().hits().mapNotNull { hit ->
+                    hit.source()?.let { product ->
+                        ProductRecommendation(
+                            productId = product.productId ?: hit.id() ?: "",
+                            productName = product.productName ?: "",
+                            category = product.category ?: "",
+                            price = product.price ?: 0f,
+                            score = hit.score() ?: 0.0,
+                        )
+                    }
                 }
-            }
 
             observation.stop()
             results
-
         } catch (e: Exception) {
             log.error(e) { "KNN search failed" }
             knnFailedCounter.increment()
@@ -262,14 +292,13 @@ class RecommendationService(
      */
     private suspend fun getColdStartRecommendations(
         limit: Int,
-        category: String?
-    ): List<ProductRecommendation> {
-        return if (category != null) {
+        category: String?,
+    ): List<ProductRecommendation> =
+        if (category != null) {
             // 카테고리별 베스트
             popularProductsCache.getCategoryBest(category, limit)
         } else {
             // 전체 인기 상품
             popularProductsCache.getTopProducts(limit)
         }
-    }
 }

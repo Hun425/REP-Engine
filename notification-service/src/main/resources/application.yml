@@ -27,6 +27,13 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+# Elasticsearch index names
+elasticsearch:
+  index:
+    product: ${ELASTICSEARCH_PRODUCT_INDEX:product_index}
+    user-behavior: ${ELASTICSEARCH_USER_BEHAVIOR_INDEX:user_behavior_index}
+    notification-history: ${ELASTICSEARCH_NOTIFICATION_HISTORY_INDEX:notification_history_index}
+
 # Notification Service Settings
 notification:
   # 가격 하락 알림 임계값 (%) - 이 비율 이상 하락 시 알림
@@ -53,6 +60,7 @@ notification:
   recommendation:
     enabled: ${RECOMMENDATION_ENABLED:true}
     cron: ${RECOMMENDATION_CRON:0 0 9 * * *}
+    zone: ${RECOMMENDATION_ZONE:Asia/Seoul}
     active-user-days: ${RECOMMENDATION_ACTIVE_USER_DAYS:7}
     limit: ${RECOMMENDATION_LIMIT:3}
     # 로컬 개발: localhost:8080
@@ -125,6 +133,13 @@ spring:
 notification:
   recommendation:
     api-url: http://recommendation-api:8082
+    zone: ${RECOMMENDATION_ZONE:Asia/Seoul}
+
+elasticsearch:
+  index:
+    product: product_index
+    user-behavior: user_behavior_index
+    notification-history: notification_history_index
 
 # Tracing (Phase 5) - Docker 환경에서 활성화
 management:

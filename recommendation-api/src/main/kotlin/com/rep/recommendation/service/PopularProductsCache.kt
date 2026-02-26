@@ -6,8 +6,8 @@ import co.elastic.clients.elasticsearch._types.SortOrder
 import co.elastic.clients.json.JsonData
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.rep.recommendation.config.RecommendationProperties
 import com.rep.model.ProductDocument
+import com.rep.recommendation.config.RecommendationProperties
 import com.rep.recommendation.model.ProductRecommendation
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
@@ -15,11 +15,12 @@ import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Component
 import java.time.Duration
+import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
 
@@ -29,7 +30,7 @@ private val log = KotlinLogging.logger {}
  * Cold Start 유저에게 인기 상품을 추천하기 위한 캐시입니다.
  * Redis에 캐싱하고, 캐시 미스 시 ES에서 집계하여 조회합니다.
  *
- * @see docs/phase%203.md - Cold Start 처리
+ * @see docs/phase 3.md - Cold Start 처리
  */
 @Component
 class PopularProductsCache(
@@ -37,14 +38,18 @@ class PopularProductsCache(
     private val redisTemplate: ReactiveRedisTemplate<String, String>,
     private val objectMapper: ObjectMapper,
     private val properties: RecommendationProperties,
-    meterRegistry: MeterRegistry
+    meterRegistry: MeterRegistry,
 ) {
     companion object {
         private const val CACHE_KEY_GLOBAL = "popular:global"
         private const val CACHE_KEY_CATEGORY_PREFIX = "popular:category:"
-        private const val PRODUCT_INDEX = "product_index"
-        private const val BEHAVIOR_INDEX = "user_behavior_index"
     }
+
+    @Value("\${elasticsearch.index.product:product_index}")
+    private lateinit var productIndex: String
+
+    @Value("\${elasticsearch.index.user-behavior:user_behavior_index}")
+    private lateinit var behaviorIndex: String
 
     private val cacheTtl = Duration.ofMinutes(properties.cache.popularTtlMinutes)
 
@@ -52,13 +57,17 @@ class PopularProductsCache(
     private val globalCacheMutex = Mutex()
     private val categoryCacheMutexMap = ConcurrentHashMap<String, Mutex>()
 
-    private val cacheHitCounter = Counter.builder("popular.cache.hit")
-        .description("Popular products cache hits")
-        .register(meterRegistry)
+    private val cacheHitCounter =
+        Counter
+            .builder("popular.cache.hit")
+            .description("Popular products cache hits")
+            .register(meterRegistry)
 
-    private val cacheMissCounter = Counter.builder("popular.cache.miss")
-        .description("Popular products cache misses")
-        .register(meterRegistry)
+    private val cacheMissCounter =
+        Counter
+            .builder("popular.cache.miss")
+            .description("Popular products cache misses")
+            .register(meterRegistry)
 
     /**
      * 전체 인기 상품을 조회합니다.
@@ -96,7 +105,8 @@ class PopularProductsCache(
 
             // Redis에 캐싱
             if (products.isNotEmpty()) {
-                redisTemplate.opsForValue()
+                redisTemplate
+                    .opsForValue()
                     .set(CACHE_KEY_GLOBAL, objectMapper.writeValueAsString(products), cacheTtl)
                     .awaitSingle()
             }
@@ -115,7 +125,10 @@ class PopularProductsCache(
      * @param limit 조회할 개수
      * @return 인기 상품 목록
      */
-    suspend fun getCategoryBest(category: String, limit: Int): List<ProductRecommendation> {
+    suspend fun getCategoryBest(
+        category: String,
+        limit: Int,
+    ): List<ProductRecommendation> {
         val cacheKey = "$CACHE_KEY_CATEGORY_PREFIX$category"
 
         // 1. Redis 캐시 확인 (락 없이 빠른 경로)
@@ -146,7 +159,8 @@ class PopularProductsCache(
 
             // Redis에 캐싱
             if (products.isNotEmpty()) {
-                redisTemplate.opsForValue()
+                redisTemplate
+                    .opsForValue()
                     .set(cacheKey, objectMapper.writeValueAsString(products), cacheTtl)
                     .awaitSingle()
             }
@@ -163,23 +177,28 @@ class PopularProductsCache(
      * 2. VIEW/CLICK 집계 (PURCHASE 결과 없을 경우)
      * 3. 최신 등록 상품 (모든 집계 결과 없을 경우)
      */
-    private fun queryPopularProducts(category: String?, limit: Int): List<ProductRecommendation> {
+    private fun queryPopularProducts(
+        category: String?,
+        limit: Int,
+    ): List<ProductRecommendation> {
         return try {
             // 1. PURCHASE 집계 시도
-            var productIds = queryBehaviorAggregation(
-                category = category,
-                actionTypes = listOf("PURCHASE"),
-                limit = limit
-            )
+            var productIds =
+                queryBehaviorAggregation(
+                    category = category,
+                    actionTypes = listOf("PURCHASE"),
+                    limit = limit,
+                )
 
             // 2. PURCHASE 없으면 VIEW/CLICK 집계
             if (productIds.isEmpty()) {
                 log.debug { "No PURCHASE data, falling back to VIEW/CLICK for category=$category" }
-                productIds = queryBehaviorAggregation(
-                    category = category,
-                    actionTypes = listOf("VIEW", "CLICK"),
-                    limit = limit
-                )
+                productIds =
+                    queryBehaviorAggregation(
+                        category = category,
+                        actionTypes = listOf("VIEW", "CLICK"),
+                        limit = limit,
+                    )
             }
 
             // 3. VIEW/CLICK도 없으면 최신 상품 조회
@@ -190,7 +209,6 @@ class PopularProductsCache(
 
             // 상품 상세 정보 조회
             getProductDetails(productIds)
-
         } catch (e: Exception) {
             log.error(e) { "Failed to query popular products for category=$category" }
             emptyList()
@@ -203,46 +221,47 @@ class PopularProductsCache(
     private fun queryBehaviorAggregation(
         category: String?,
         actionTypes: List<String>,
-        limit: Int
+        limit: Int,
     ): List<String> {
-        val aggResponse = esClient.search({ s ->
-            s.index(BEHAVIOR_INDEX)
-                .size(0)
-                .query { q ->
-                    q.bool { b ->
-                        // actionTypes 필터 (단일 또는 복수)
-                        if (actionTypes.size == 1) {
-                            b.must { m ->
-                                m.term { t -> t.field("actionType").value(actionTypes.first()) }
-                            }
-                        } else {
-                            b.must { m ->
-                                m.terms { t ->
-                                    t.field("actionType").terms { tv ->
-                                        tv.value(actionTypes.map { FieldValue.of(it) })
+        val aggResponse =
+            esClient.search({ s ->
+                s
+                    .index(behaviorIndex)
+                    .size(0)
+                    .query { q ->
+                        q.bool { b ->
+                            // actionTypes 필터 (단일 또는 복수)
+                            if (actionTypes.size == 1) {
+                                b.must { m ->
+                                    m.term { t -> t.field("actionType").value(actionTypes.first()) }
+                                }
+                            } else {
+                                b.must { m ->
+                                    m.terms { t ->
+                                        t.field("actionType").terms { tv ->
+                                            tv.value(actionTypes.map { FieldValue.of(it) })
+                                        }
                                     }
                                 }
                             }
-                        }
-                        // 최근 7일
-                        b.must { m ->
-                            m.range { r -> r.field("timestamp").gte(JsonData.of("now-7d")) }
-                        }
-                        // 카테고리 필터
-                        if (category != null) {
+                            // 최근 7일
                             b.must { m ->
-                                m.term { t -> t.field("category").value(category) }
+                                m.range { r -> r.field("timestamp").gte(JsonData.of("now-7d")) }
                             }
+                            // 카테고리 필터
+                            if (category != null) {
+                                b.must { m ->
+                                    m.term { t -> t.field("category").value(category) }
+                                }
+                            }
+                            b
                         }
-                        b
+                    }.aggregations("popular_products") { agg ->
+                        agg.terms { t ->
+                            t.field("productId").size(limit)
+                        }
                     }
-                }
-                .aggregations("popular_products") { agg ->
-                    agg.terms { t ->
-                        t.field("productId").size(limit)
-                    }
-                }
-        }, Void::class.java)
+            }, Void::class.java)
 
         // 안전한 집계 결과 추출 (NPE 방지)
         return runCatching {
@@ -282,27 +301,30 @@ class PopularProductsCache(
     /**
      * 최신 등록 상품 조회 (행동 데이터가 없을 때 폴백)
      */
-    private fun getLatestProducts(category: String?, limit: Int): List<ProductRecommendation> {
-        return try {
-            val response = esClient.search({ s ->
-                s.index(PRODUCT_INDEX)
-                    .size(limit)
-                    .query { q ->
-                        if (category != null) {
-                            q.term { t -> t.field("category").value(category) }
-                        } else {
-                            q.matchAll { it }
+    private fun getLatestProducts(
+        category: String?,
+        limit: Int,
+    ): List<ProductRecommendation> =
+        try {
+            val response =
+                esClient.search({ s ->
+                    s
+                        .index(productIndex)
+                        .size(limit)
+                        .query { q ->
+                            if (category != null) {
+                                q.term { t -> t.field("category").value(category) }
+                            } else {
+                                q.matchAll { it }
+                            }
+                        }.sort { sort ->
+                            sort.field { f -> f.field("createdAt").order(SortOrder.Desc) }
+                        }.source { src ->
+                            src.filter { filter ->
+                                filter.includes("productId", "productName", "category", "price")
+                            }
                         }
-                    }
-                    .sort { sort ->
-                        sort.field { f -> f.field("createdAt").order(SortOrder.Desc) }
-                    }
-                    .source { src ->
-                        src.filter { filter ->
-                            filter.includes("productId", "productName", "category", "price")
-                        }
-                    }
-            }, ProductDocument::class.java)
+                }, ProductDocument::class.java)
 
             response.hits().hits().mapNotNull { hit ->
                 hit.source()?.let { product ->
@@ -311,7 +333,7 @@ class PopularProductsCache(
                         productName = product.productName ?: "",
                         category = product.category ?: "",
                         price = product.price ?: 0f,
-                        score = 0.0
+                        score = 0.0,
                     )
                 }
             }
@@ -319,7 +341,6 @@ class PopularProductsCache(
             log.error(e) { "Failed to get latest products for category=$category" }
             emptyList()
         }
-    }
 
     /**
      * 상품 ID 목록으로 상품 상세 정보를 조회합니다.
@@ -328,30 +349,34 @@ class PopularProductsCache(
         if (productIds.isEmpty()) return emptyList()
 
         return try {
-            val response = esClient.mget(
-                { m -> m.index(PRODUCT_INDEX).ids(productIds) },
-                ProductDocument::class.java
-            )
+            val response =
+                esClient.mget(
+                    { m -> m.index(productIndex).ids(productIds) },
+                    ProductDocument::class.java,
+                )
 
             // 원래 순서 유지 (인기순)
-            val productMap = response.docs()
-                .filter { it.result()?.found() == true }
-                .mapNotNull { doc ->
-                    val source = doc.result()?.source()
-                    if (source != null) {
-                        doc.result()?.id() to ProductRecommendation(
-                            productId = source.productId ?: doc.result()?.id() ?: "",
-                            productName = source.productName ?: "",
-                            category = source.category ?: "",
-                            price = source.price ?: 0f,
-                            score = 0.0  // 인기 상품은 score 없음
-                        )
-                    } else null
-                }
-                .toMap()
+            val productMap =
+                response
+                    .docs()
+                    .filter { it.result()?.found() == true }
+                    .mapNotNull { doc ->
+                        val source = doc.result()?.source()
+                        if (source != null) {
+                            doc.result()?.id() to
+                                ProductRecommendation(
+                                    productId = source.productId ?: doc.result()?.id() ?: "",
+                                    productName = source.productName ?: "",
+                                    category = source.category ?: "",
+                                    price = source.price ?: 0f,
+                                    score = 0.0, // 인기 상품은 score 없음
+                                )
+                        } else {
+                            null
+                        }
+                    }.toMap()
 
             productIds.mapNotNull { productMap[it] }
-
         } catch (e: Exception) {
             log.error(e) { "Failed to get product details for ${productIds.size} products" }
             emptyList()

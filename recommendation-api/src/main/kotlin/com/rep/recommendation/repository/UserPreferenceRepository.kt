@@ -10,6 +10,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Repository
 import java.time.Duration
@@ -28,26 +29,32 @@ class UserPreferenceRepository(
     private val redisTemplate: ReactiveRedisTemplate<String, String>,
     private val esClient: ElasticsearchClient,
     private val objectMapper: ObjectMapper,
-    meterRegistry: MeterRegistry
+    @Value("\${elasticsearch.index.user-preference:user_preference_index}") private val userPreferenceIndex: String,
+    meterRegistry: MeterRegistry,
 ) {
     companion object {
         private const val KEY_PREFIX = "user:preference:"
-        private const val ES_INDEX = "user_preference_index"
         private val TTL = Duration.ofHours(24)
-        private const val REDIS_TIMEOUT_MS = 500L  // Redis 비정상 시 빠른 실패용
+        private const val REDIS_TIMEOUT_MS = 500L // Redis 비정상 시 빠른 실패용
     }
 
-    private val cacheHitCounter = Counter.builder("preference.cache.hit")
-        .description("User preference cache hits")
-        .register(meterRegistry)
+    private val cacheHitCounter =
+        Counter
+            .builder("preference.cache.hit")
+            .description("User preference cache hits")
+            .register(meterRegistry)
 
-    private val cacheMissCounter = Counter.builder("preference.cache.miss")
-        .description("User preference cache misses")
-        .register(meterRegistry)
+    private val cacheMissCounter =
+        Counter
+            .builder("preference.cache.miss")
+            .description("User preference cache misses")
+            .register(meterRegistry)
 
-    private val esFallbackCounter = Counter.builder("preference.es.fallback")
-        .description("ES fallback for user preference")
-        .register(meterRegistry)
+    private val esFallbackCounter =
+        Counter
+            .builder("preference.es.fallback")
+            .description("ES fallback for user preference")
+            .register(meterRegistry)
 
     /**
      * 유저 취향 벡터를 조회합니다.
@@ -63,9 +70,10 @@ class UserPreferenceRepository(
 
         return try {
             // 1. Redis에서 조회 (타임아웃 적용)
-            val cached = withTimeoutOrNull(REDIS_TIMEOUT_MS) {
-                redisTemplate.opsForValue().get(key).awaitSingleOrNull()
-            }
+            val cached =
+                withTimeoutOrNull(REDIS_TIMEOUT_MS) {
+                    redisTemplate.opsForValue().get(key).awaitSingleOrNull()
+                }
 
             if (cached != null) {
                 log.debug { "Cache hit for userId=$userId" }
@@ -95,17 +103,23 @@ class UserPreferenceRepository(
     /**
      * ES에서 조회한 벡터를 Redis에 캐싱합니다.
      */
-    private suspend fun cacheToRedis(userId: String, vector: FloatArray, actionCount: Int) {
+    private suspend fun cacheToRedis(
+        userId: String,
+        vector: FloatArray,
+        actionCount: Int,
+    ) {
         try {
             val key = "$KEY_PREFIX$userId"
-            val data = UserPreferenceData(
-                preferenceVector = vector.toList(),
-                actionCount = actionCount,
-                updatedAt = System.currentTimeMillis()
-            )
+            val data =
+                UserPreferenceData(
+                    preferenceVector = vector.toList(),
+                    actionCount = actionCount,
+                    updatedAt = System.currentTimeMillis(),
+                )
             // 캐싱 실패해도 ES 폴백 결과는 반환하므로 타임아웃으로 빠르게 포기
             withTimeoutOrNull(REDIS_TIMEOUT_MS) {
-                redisTemplate.opsForValue()
+                redisTemplate
+                    .opsForValue()
                     .set(key, objectMapper.writeValueAsString(data), TTL)
                     .awaitSingleOrNull()
             }
@@ -120,12 +134,13 @@ class UserPreferenceRepository(
      *
      * @return Pair(벡터, actionCount) 또는 null
      */
-    private fun getFromEs(userId: String): Pair<FloatArray, Int>? {
-        return try {
-            val response = esClient.get(
-                { g -> g.index(ES_INDEX).id(userId) },
-                UserPreferenceDocument::class.java
-            )
+    private fun getFromEs(userId: String): Pair<FloatArray, Int>? =
+        try {
+            val response =
+                esClient.get(
+                    { g -> g.index(userPreferenceIndex).id(userId) },
+                    UserPreferenceDocument::class.java,
+                )
 
             if (response.found()) {
                 val source = response.source()
@@ -144,5 +159,4 @@ class UserPreferenceRepository(
             log.warn(e) { "Failed to get preference vector from ES for userId=$userId" }
             null
         }
-    }
 }

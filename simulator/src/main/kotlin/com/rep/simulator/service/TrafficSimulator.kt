@@ -7,7 +7,20 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
 import jakarta.annotation.PreDestroy
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mu.KotlinLogging
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.stereotype.Service
@@ -27,13 +40,13 @@ private val log = KotlinLogging.logger {}
  * 다수의 가상 유저가 동시에 활동하는 상황을 시뮬레이션합니다.
  * Java 25 Virtual Threads + Kotlin Coroutines 조합으로 수만 명의 유저를 경량 처리합니다.
  *
- * @see <a href="docs/adr-001-concurrency-strategy.md">ADR-001: 동시성 처리 전략</a>
+ * @see docs/adr-001-concurrency-strategy.md
  */
 @Service
 class TrafficSimulator(
     private val kafkaTemplate: KafkaTemplate<String, UserActionEvent>,
     private val properties: SimulatorProperties,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
 ) {
     // Java 25 Virtual Threads 기반 Dispatcher
     // Blocking I/O 호출 시에도 시스템 처리량 유지
@@ -48,23 +61,29 @@ class TrafficSimulator(
 
     // 현재 실행 중인 설정값 (REST API 응답용)
     @Volatile private var currentUserCount: Int = 0
+
     @Volatile private var currentDelayMillis: Long = 0L
 
     // Metrics
-    private val sentCounter: Counter = Counter.builder("simulator.events.sent")
-        .tag("topic", properties.topic)
-        .register(meterRegistry)
+    private val sentCounter: Counter =
+        Counter
+            .builder("simulator.events.sent")
+            .tag("topic", properties.topic)
+            .register(meterRegistry)
 
-    private val failedCounter: Counter = Counter.builder("simulator.events.failed")
-        .tag("topic", properties.topic)
-        .register(meterRegistry)
+    private val failedCounter: Counter =
+        Counter
+            .builder("simulator.events.failed")
+            .tag("topic", properties.topic)
+            .register(meterRegistry)
 
     private val totalEventsSent = AtomicLong(0)
     private val activeSessionCount = AtomicInteger(0)
 
     init {
         // 활성 세션 수 Gauge 등록
-        Gauge.builder("simulator.sessions.active") { activeSessionCount.get() }
+        Gauge
+            .builder("simulator.sessions.active") { activeSessionCount.get() }
             .description("Number of active user sessions")
             .register(meterRegistry)
     }
@@ -79,8 +98,11 @@ class TrafficSimulator(
      */
     fun startSimulation(
         userCount: Int = properties.userCount,
-        delayMillis: Long = properties.delayMillis
+        delayMillis: Long = properties.delayMillis,
     ) {
+        require(userCount > 0) { "userCount must be greater than 0" }
+        require(delayMillis > 0) { "delayMillis must be greater than 0" }
+
         simulationLock.withLock {
             if (simulationJob?.isActive == true) {
                 log.warn { "Simulation is already running" }
@@ -96,25 +118,28 @@ class TrafficSimulator(
             // shutdown 플래그 초기화
             isShuttingDown.set(false)
 
-            simulationJob = scope.launch {
-                val sessions = (1..userCount).map { i ->
-                    async {
-                        activeSessionCount.incrementAndGet()
-                        try {
-                            val session = UserSession(
-                                userId = "USER-${i.toString().padStart(6, '0')}",
-                                productCountPerCategory = properties.productCountPerCategory
-                            )
-                            runUserSession(session, delayMillis)
-                        } finally {
-                            activeSessionCount.decrementAndGet()
+            simulationJob =
+                scope.launch {
+                    val sessions =
+                        (1..userCount).map { i ->
+                            async {
+                                activeSessionCount.incrementAndGet()
+                                try {
+                                    val session =
+                                        UserSession(
+                                            userId = "USER-${i.toString().padStart(6, '0')}",
+                                            productCountPerCategory = properties.productCountPerCategory,
+                                        )
+                                    runUserSession(session, delayMillis)
+                                } finally {
+                                    activeSessionCount.decrementAndGet()
+                                }
+                            }
                         }
-                    }
-                }
 
-                // 모든 세션이 취소될 때까지 대기
-                sessions.awaitAll()
-            }
+                    // 모든 세션이 취소될 때까지 대기
+                    sessions.awaitAll()
+                }
         }
     }
 
@@ -123,7 +148,10 @@ class TrafficSimulator(
      *
      * isShuttingDown 플래그를 체크하여 graceful shutdown을 지원합니다.
      */
-    private suspend fun runUserSession(session: UserSession, delayMillis: Long) {
+    private suspend fun runUserSession(
+        session: UserSession,
+        delayMillis: Long,
+    ) {
         log.debug { "Starting session for ${session.userId}" }
 
         try {
@@ -225,14 +253,13 @@ class TrafficSimulator(
     /**
      * 시뮬레이션 상태를 반환합니다.
      */
-    fun getStatus(): SimulationStatus {
-        return SimulationStatus(
+    fun getStatus(): SimulationStatus =
+        SimulationStatus(
             isRunning = simulationJob?.isActive == true,
             totalEventsSent = totalEventsSent.get(),
             userCount = currentUserCount,
-            delayMillis = currentDelayMillis
+            delayMillis = currentDelayMillis,
         )
-    }
 
     @PreDestroy
     fun cleanup() {
@@ -246,6 +273,6 @@ class TrafficSimulator(
         val isRunning: Boolean,
         val totalEventsSent: Long,
         val userCount: Int,
-        val delayMillis: Long
+        val delayMillis: Long,
     )
 }
