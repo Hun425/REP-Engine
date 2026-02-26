@@ -35,7 +35,7 @@ dependencies {
 
     // Logging
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
-    implementation("net.logstash.logback:logstash-logback-encoder:8.0")  // Phase 5: JSON 로깅
+    implementation("net.logstash.logback:logstash-logback-encoder:8.0") // Phase 5: JSON 로깅
 
     // Micrometer for metrics
     implementation("io.micrometer:micrometer-registry-prometheus")

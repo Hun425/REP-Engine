@@ -4,6 +4,7 @@ plugins {
     id("org.springframework.boot") version "3.5.9" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
     id("com.github.davidmc24.gradle.plugin.avro") version "1.9.1" apply false
+    id("org.jlleitschuh.gradle.ktlint") version "14.0.1" apply false
 }
 
 allprojects {
@@ -17,6 +18,15 @@ allprojects {
 }
 
 subprojects {
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        apply(plugin = "org.jlleitschuh.gradle.ktlint")
+        configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+            filter {
+                exclude("**/build/**")
+            }
+        }
+    }
+
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         compilerOptions {
             freeCompilerArgs.add("-Xjsr305=strict")
