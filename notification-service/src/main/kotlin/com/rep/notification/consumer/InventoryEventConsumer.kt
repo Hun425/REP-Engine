@@ -26,7 +26,7 @@ private val log = KotlinLogging.logger {}
  * - DefaultErrorHandler가 재시도 및 DLQ 전송 담당
  * - 예외 발생 시 에러 핸들러로 전파하여 재시도/DLQ 처리
  *
- * @see docs/phase%204.md - Inventory Event Consumer
+ * @see docs/phase 4.md - Inventory Event Consumer
  * @see KafkaConsumerConfig - DLQ 설정
  */
 @Component
@@ -34,15 +34,19 @@ private val log = KotlinLogging.logger {}
 class InventoryEventConsumer(
     private val eventDetector: EventDetector,
     private val meterRegistry: MeterRegistry,
-    @param:Qualifier("virtualThreadDispatcher") private val dispatcher: CloseableCoroutineDispatcher
+    @param:Qualifier("virtualThreadDispatcher") private val dispatcher: CloseableCoroutineDispatcher,
 ) {
-    private val processedCounter = Counter.builder("inventory.events.processed")
-        .description("Inventory events processed")
-        .register(meterRegistry)
+    private val processedCounter =
+        Counter
+            .builder("inventory.events.processed")
+            .description("Inventory events processed")
+            .register(meterRegistry)
 
-    private val errorCounter = Counter.builder("inventory.events.error")
-        .description("Inventory event processing errors")
-        .register(meterRegistry)
+    private val errorCounter =
+        Counter
+            .builder("inventory.events.error")
+            .description("Inventory event processing errors")
+            .register(meterRegistry)
 
     /**
      * 재고/가격 변동 이벤트 처리
@@ -54,7 +58,7 @@ class InventoryEventConsumer(
     @KafkaListener(
         topics = ["\${notification.inventory-topic}"],
         groupId = "notification-consumer-group",
-        containerFactory = "inventoryListenerContainerFactory"
+        containerFactory = "inventoryListenerContainerFactory",
     )
     fun consume(record: ConsumerRecord<String, ProductInventoryEvent>) {
         val event = record.value()
@@ -80,7 +84,6 @@ class InventoryEventConsumer(
             }
 
             processedCounter.increment()
-
         } catch (e: Exception) {
             errorCounter.increment()
             log.error(e) { "Failed to process inventory event: ${event.eventId}" }

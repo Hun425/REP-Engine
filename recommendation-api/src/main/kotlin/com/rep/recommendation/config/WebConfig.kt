@@ -11,16 +11,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
  */
 @Configuration
 class WebConfig : WebMvcConfigurer {
-
     override fun addCorsMappings(registry: CorsRegistry) {
-        registry.addMapping("/api/**")
+        registry
+            .addMapping("/api/**")
             .allowedOrigins(
-                "http://localhost:5173",  // Vite 기본 포트
-                "http://localhost:3001",  // 대체 포트
-                "http://localhost:3000",  // 대체 포트
-                "http://frontend:80"      // Docker
-            )
-            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                "http://localhost:5173", // Vite 기본 포트
+                "http://localhost:3001", // 대체 포트
+                "http://localhost:3000", // 대체 포트
+                "http://frontend:80", // Docker
+            ).allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
             .allowedHeaders("*")
             .allowCredentials(true)
             .maxAge(3600)

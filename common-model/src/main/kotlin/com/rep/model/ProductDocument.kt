@@ -19,7 +19,6 @@ data class ProductDocument(
     val productName: String = "",
     val category: String = "",
     val price: Float = 0f,
-
     // 선택 필드 (nullable)
     val subCategory: String? = null,
     val stock: Int? = null,
@@ -28,22 +27,19 @@ data class ProductDocument(
     val tags: List<String>? = null,
     val productVector: List<Float>? = null,
     val createdAt: String? = null,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
 ) {
     /**
      * 필수 필드 유효성 검증
      */
-    fun isValid(): Boolean {
-        return productId.isNotBlank() &&
-               productName.isNotBlank() &&
-               category.isNotBlank() &&
-               price >= 0
-    }
+    fun isValid(): Boolean =
+        productId.isNotBlank() &&
+            productName.isNotBlank() &&
+            category.isNotBlank() &&
+            price >= 0
 
     /**
      * KNN 검색 가능 여부 (벡터 존재 + 768차원 확인)
      */
-    fun hasVector(): Boolean {
-        return productVector != null && productVector.size == UserPreferenceData.VECTOR_DIMENSIONS
-    }
+    fun hasVector(): Boolean = productVector != null && productVector.size == UserPreferenceData.VECTOR_DIMENSIONS
 }

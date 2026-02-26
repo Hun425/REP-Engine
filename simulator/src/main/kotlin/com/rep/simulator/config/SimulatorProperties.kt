@@ -10,23 +10,16 @@ import org.springframework.validation.annotation.Validated
 data class SimulatorProperties(
     @field:Positive(message = "userCount must be positive")
     val userCount: Int = 100,
-
     @field:Positive(message = "delayMillis must be positive")
     val delayMillis: Long = 1000,
-
     @field:NotBlank(message = "topic must not be blank")
     val topic: String = "user.action.v1",
-
     val enabled: Boolean = true,
-
     @field:Positive(message = "productCountPerCategory must be positive")
     val productCountPerCategory: Int = 100,
-
     @field:NotBlank(message = "inventoryTopic must not be blank")
     val inventoryTopic: String = "product.inventory.v1",
-
     @field:Positive(message = "inventoryIntervalMs must be positive")
     val inventoryIntervalMs: Long = 5000,
-
-    val inventoryEnabled: Boolean = true
+    val inventoryEnabled: Boolean = true,
 )

@@ -22,46 +22,51 @@ private val log = KotlinLogging.logger {}
  *
  * simulator 모듈은 WebFlux 의존성이 없으므로 Java HttpClient를 사용합니다.
  *
- * @see docs/phase%205.md
+ * @see docs/phase 5.md
  */
 @Component
 @ConditionalOnProperty(name = ["spring.kafka.producer.properties.schema.registry.url"])
 class SchemaRegistryHealthIndicator(
     @Value("\${spring.kafka.producer.properties.schema.registry.url}")
-    private val schemaRegistryUrl: String
+    private val schemaRegistryUrl: String,
 ) : HealthIndicator {
+    private val httpClient =
+        HttpClient
+            .newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build()
 
-    private val httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(5))
-        .build()
-
-    override fun health(): Health {
-        return try {
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create("$schemaRegistryUrl/subjects"))
-                .timeout(Duration.ofSeconds(5))
-                .GET()
-                .build()
+    override fun health(): Health =
+        try {
+            val request =
+                HttpRequest
+                    .newBuilder()
+                    .uri(URI.create("$schemaRegistryUrl/subjects"))
+                    .timeout(Duration.ofSeconds(5))
+                    .GET()
+                    .build()
 
             val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
 
             if (response.statusCode() == 200) {
-                Health.up()
+                Health
+                    .up()
                     .withDetail("url", schemaRegistryUrl)
                     .withDetail("status", "connected")
                     .build()
             } else {
-                Health.down()
+                Health
+                    .down()
                     .withDetail("url", schemaRegistryUrl)
                     .withDetail("status", "HTTP ${response.statusCode()}")
                     .build()
             }
         } catch (e: Exception) {
             log.warn { "Schema Registry health check failed: ${e.message}" }
-            Health.down()
+            Health
+                .down()
                 .withDetail("url", schemaRegistryUrl)
                 .withDetail("error", e.message ?: "unknown error")
                 .build()
         }
-    }
 }

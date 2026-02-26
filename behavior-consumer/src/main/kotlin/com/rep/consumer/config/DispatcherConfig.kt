@@ -5,7 +5,6 @@ import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import mu.KotlinLogging
-import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.util.concurrent.Executors
@@ -23,7 +22,6 @@ private val log = KotlinLogging.logger {}
 @Configuration
 @OptIn(ExperimentalCoroutinesApi::class)
 class DispatcherConfig {
-
     private var dispatcher: CloseableCoroutineDispatcher? = null
 
     /**
@@ -32,11 +30,11 @@ class DispatcherConfig {
      * Java 25 Virtual Threads를 활용하여 blocking I/O 호출 시에도
      * 시스템 처리량을 유지합니다.
      */
-    @Bean
-    @Qualifier("virtualThreadDispatcher")
+    @Bean("virtualThreadDispatcher")
     fun virtualThreadDispatcher(): CloseableCoroutineDispatcher {
         log.info { "Creating Virtual Thread Coroutine Dispatcher" }
-        return Executors.newVirtualThreadPerTaskExecutor()
+        return Executors
+            .newVirtualThreadPerTaskExecutor()
             .asCoroutineDispatcher()
             .also { dispatcher = it }
     }

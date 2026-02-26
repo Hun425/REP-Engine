@@ -15,7 +15,6 @@ import org.springframework.validation.annotation.Validated
 data class EmbeddingProperties(
     @field:NotBlank(message = "url must not be blank")
     val url: String = "http://localhost:8000",
-
     @field:Positive(message = "timeoutMs must be positive")
-    val timeoutMs: Long = 5000
+    val timeoutMs: Long = 5000,
 )

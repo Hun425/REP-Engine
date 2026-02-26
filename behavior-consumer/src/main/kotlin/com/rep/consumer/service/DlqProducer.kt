@@ -21,24 +21,28 @@ private val log = KotlinLogging.logger {}
  * 처리 실패한 메시지를 DLQ 토픽으로 전송합니다.
  * DLQ 전송도 실패할 경우 로컬 파일에 기록합니다 (최후의 수단).
  *
- * @see <a href="docs/phase 2.md">Phase 2: DLQ 처리</a>
+ * @see docs/phase 2.md
  */
 @Component
 class DlqProducer(
     private val kafkaTemplate: KafkaTemplate<String, UserActionEvent>,
     private val properties: ConsumerProperties,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
 ) {
     // 파일 로테이션 동기화를 위한 Lock
     private val fileLock = ReentrantLock()
 
-    private val dlqCounter: Counter = Counter.builder("kafka.dlq.sent")
-        .tag("topic", properties.dlqTopic)
-        .register(meterRegistry)
+    private val dlqCounter: Counter =
+        Counter
+            .builder("kafka.dlq.sent")
+            .tag("topic", properties.dlqTopic)
+            .register(meterRegistry)
 
-    private val dlqFailedCounter: Counter = Counter.builder("kafka.dlq.failed")
-        .tag("topic", properties.dlqTopic)
-        .register(meterRegistry)
+    private val dlqFailedCounter: Counter =
+        Counter
+            .builder("kafka.dlq.failed")
+            .tag("topic", properties.dlqTopic)
+            .register(meterRegistry)
 
     /**
      * 실패한 이벤트를 DLQ 토픽으로 동기 전송합니다.
@@ -53,7 +57,9 @@ class DlqProducer(
             // 동기 전송 - 완료될 때까지 대기
             val result = kafkaTemplate.send(properties.dlqTopic, event.userId.toString(), event).get()
             dlqCounter.increment()
-            log.info { "Event sent to DLQ successfully: traceId=${event.traceId}, offset=${result.recordMetadata.offset()}" }
+            log.info {
+                "Event sent to DLQ successfully: traceId=${event.traceId}, offset=${result.recordMetadata.offset()}"
+            }
             true
         } catch (e: Exception) {
             dlqFailedCounter.increment()

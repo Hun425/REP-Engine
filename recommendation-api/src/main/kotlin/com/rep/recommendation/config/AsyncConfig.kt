@@ -18,7 +18,6 @@ import java.util.concurrent.Executors
  */
 @Configuration
 class AsyncConfig {
-
     private lateinit var virtualThreadExecutor: ExecutorService
 
     /**

@@ -17,7 +17,6 @@ import org.springframework.kafka.core.ProducerFactory
  */
 @Configuration
 class KafkaProducerConfig {
-
     @Value("\${spring.kafka.bootstrap-servers}")
     private lateinit var bootstrapServers: String
 
@@ -26,26 +25,24 @@ class KafkaProducerConfig {
 
     @Bean
     fun producerFactory(): ProducerFactory<String, UserActionEvent> {
-        val configProps = mapOf(
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
-            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
-            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
-
-            // Reliability settings
-            ProducerConfig.ACKS_CONFIG to "all",
-            ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to true,
-            ProducerConfig.RETRIES_CONFIG to 3,
-
-            // Schema Registry
-            KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl
-        )
+        val configProps =
+            mapOf(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
+                // Reliability settings
+                ProducerConfig.ACKS_CONFIG to "all",
+                ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to true,
+                ProducerConfig.RETRIES_CONFIG to 3,
+                // Schema Registry
+                KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
+            )
         return DefaultKafkaProducerFactory(configProps)
     }
 
     @Bean
-    fun kafkaTemplate(): KafkaTemplate<String, UserActionEvent> {
-        return KafkaTemplate(producerFactory()).apply {
+    fun kafkaTemplate(): KafkaTemplate<String, UserActionEvent> =
+        KafkaTemplate(producerFactory()).apply {
             setObservationEnabled(true)
         }
-    }
 }

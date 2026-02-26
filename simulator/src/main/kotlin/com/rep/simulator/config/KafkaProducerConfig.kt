@@ -21,9 +21,8 @@ import org.springframework.kafka.core.ProducerFactory
  */
 @Configuration
 class KafkaProducerConfig(
-    private val kafkaProperties: KafkaProperties
+    private val kafkaProperties: KafkaProperties,
 ) {
-
     private fun producerConfigs(): Map<String, Any> {
         val configProps = mutableMapOf<String, Any>()
 
@@ -43,7 +42,9 @@ class KafkaProducerConfig(
                 "enable.idempotence" -> configProps[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = value.toBoolean()
                 "linger.ms" -> configProps[ProducerConfig.LINGER_MS_CONFIG] = value.toInt()
                 "batch.size" -> configProps[ProducerConfig.BATCH_SIZE_CONFIG] = value.toInt()
-                "max.in.flight.requests.per.connection" -> configProps[ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION] = value.toInt()
+                "max.in.flight.requests.per.connection" ->
+                    configProps[ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION] =
+                        value.toInt()
                 "schema.registry.url" -> configProps[KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG] = value
             }
         }
@@ -52,26 +53,21 @@ class KafkaProducerConfig(
     }
 
     @Bean
-    fun producerFactory(): ProducerFactory<String, UserActionEvent> {
-        return DefaultKafkaProducerFactory(producerConfigs())
-    }
+    fun producerFactory(): ProducerFactory<String, UserActionEvent> = DefaultKafkaProducerFactory(producerConfigs())
 
     @Bean
-    fun kafkaTemplate(): KafkaTemplate<String, UserActionEvent> {
-        return KafkaTemplate(producerFactory()).apply {
+    fun kafkaTemplate(): KafkaTemplate<String, UserActionEvent> =
+        KafkaTemplate(producerFactory()).apply {
             setObservationEnabled(true)
         }
-    }
 
     @Bean
-    fun inventoryProducerFactory(): ProducerFactory<String, ProductInventoryEvent> {
-        return DefaultKafkaProducerFactory(producerConfigs())
-    }
+    fun inventoryProducerFactory(): ProducerFactory<String, ProductInventoryEvent> =
+        DefaultKafkaProducerFactory(producerConfigs())
 
     @Bean
-    fun inventoryKafkaTemplate(): KafkaTemplate<String, ProductInventoryEvent> {
-        return KafkaTemplate(inventoryProducerFactory()).apply {
+    fun inventoryKafkaTemplate(): KafkaTemplate<String, ProductInventoryEvent> =
+        KafkaTemplate(inventoryProducerFactory()).apply {
             setObservationEnabled(true)
         }
-    }
 }

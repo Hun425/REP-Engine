@@ -1,5 +1,6 @@
 package com.rep.consumer.service
 
+import com.github.benmanes.caffeine.cache.Caffeine
 import com.rep.consumer.repository.ProductVectorRepository
 import com.rep.consumer.repository.UserPreferenceRepository
 import com.rep.event.user.UserActionEvent
@@ -7,7 +8,6 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.observation.Observation
 import io.micrometer.observation.ObservationRegistry
-import com.github.benmanes.caffeine.cache.Caffeine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import mu.KotlinLogging
@@ -28,7 +28,7 @@ private val log = KotlinLogging.logger {}
  * 4. EMA로 취향 벡터 갱신
  * 5. Redis에 저장 (+ ES 백업)
  *
- * @see docs/phase%202.md
+ * @see docs/phase 2.md
  * @see docs/adr-004-vector-storage.md
  */
 @Component
@@ -37,32 +37,39 @@ class PreferenceUpdater(
     private val userPreferenceRepository: UserPreferenceRepository,
     private val preferenceVectorCalculator: PreferenceVectorCalculator,
     private val meterRegistry: MeterRegistry,
-    private val observationRegistry: ObservationRegistry
+    private val observationRegistry: ObservationRegistry,
 ) {
     // 유저별 Mutex - Lost Update 방지
     // 같은 유저에 대한 동시 업데이트를 직렬화하여 Lost Update 방지
     // Caffeine: 5분간 접근 없는 유저의 Mutex 자동 제거 (메모리 누수 방지)
-    private val userLocks = Caffeine.newBuilder()
-        .expireAfterAccess(5, TimeUnit.MINUTES)
-        .maximumSize(100_000)
-        .build<String, Mutex>()
+    private val userLocks =
+        Caffeine
+            .newBuilder()
+            .expireAfterAccess(5, TimeUnit.MINUTES)
+            .maximumSize(100_000)
+            .build<String, Mutex>()
 
-    private val updateSuccessCounter: Counter = Counter.builder("preference.update.success")
-        .register(meterRegistry)
+    private val updateSuccessCounter: Counter =
+        Counter
+            .builder("preference.update.success")
+            .register(meterRegistry)
 
-    private val updateSkippedCounter: Counter = Counter.builder("preference.update.skipped")
-        .description("Skipped due to missing product vector")
-        .register(meterRegistry)
+    private val updateSkippedCounter: Counter =
+        Counter
+            .builder("preference.update.skipped")
+            .description("Skipped due to missing product vector")
+            .register(meterRegistry)
 
-    private val updateFailedCounter: Counter = Counter.builder("preference.update.failed")
-        .register(meterRegistry)
+    private val updateFailedCounter: Counter =
+        Counter
+            .builder("preference.update.failed")
+            .register(meterRegistry)
 
     /**
      * 유저별 Mutex를 반환합니다.
      * Caffeine Cache의 get(key, loader)로 thread-safe하게 생성
      */
-    private fun getUserLock(userId: String): Mutex =
-        userLocks.get(userId) { Mutex() }
+    private fun getUserLock(userId: String): Mutex = userLocks.get(userId) { Mutex() }
 
     /**
      * 단일 이벤트에 대해 유저 취향 벡터를 갱신합니다.
@@ -77,9 +84,11 @@ class PreferenceUpdater(
         val productId = event.productId.toString()
         val actionType = event.actionType.toString()
 
-        val observation = Observation.createNotStarted("preference.update", observationRegistry)
-            .lowCardinalityKeyValue("userId", userId)
-            .lowCardinalityKeyValue("actionType", actionType)
+        val observation =
+            Observation
+                .createNotStarted("preference.update", observationRegistry)
+                .lowCardinalityKeyValue("userId", userId)
+                .lowCardinalityKeyValue("actionType", actionType)
         observation.start()
 
         return try {
@@ -90,7 +99,7 @@ class PreferenceUpdater(
                 log.debug { "Product vector not found for productId=$productId, skipping preference update" }
                 updateSkippedCounter.increment()
                 observation.stop()
-                return true  // 상품 벡터가 없는 것은 오류가 아님
+                return true // 상품 벡터가 없는 것은 오류가 아님
             }
 
             // 유저별 Mutex로 동시 업데이트 직렬화
@@ -101,17 +110,18 @@ class PreferenceUpdater(
                 val currentActionCount = currentData?.actionCount ?: 0
 
                 // 3. EMA로 취향 벡터 갱신
-                val updatedVector = preferenceVectorCalculator.update(
-                    currentPreference = currentPreference,
-                    newProductVector = productVector,
-                    actionType = actionType
-                )
+                val updatedVector =
+                    preferenceVectorCalculator.update(
+                        currentPreference = currentPreference,
+                        newProductVector = productVector,
+                        actionType = actionType,
+                    )
 
                 // 4. Redis에 저장 (+ ES 백업)
                 userPreferenceRepository.save(
                     userId = userId,
                     vector = updatedVector,
-                    actionCount = currentActionCount + 1
+                    actionCount = currentActionCount + 1,
                 )
 
                 log.debug {
@@ -123,7 +133,6 @@ class PreferenceUpdater(
             updateSuccessCounter.increment()
             observation.stop()
             true
-
         } catch (e: Exception) {
             log.error(e) { "Failed to update preference for userId=$userId" }
             updateFailedCounter.increment()
@@ -163,43 +172,44 @@ class PreferenceUpdater(
                 }
 
                 // 유저별 Mutex로 동시 업데이트 직렬화
-                val userSuccessCount = getUserLock(userId).withLock {
-                    var innerSuccessCount = 0
+                val userSuccessCount =
+                    getUserLock(userId).withLock {
+                        var innerSuccessCount = 0
 
-                    // 현재 취향 벡터 조회
-                    var currentPreference = userPreferenceRepository.get(userId)
-                    val currentData = userPreferenceRepository.getWithMetadata(userId)
-                    var actionCount = currentData?.actionCount ?: 0
+                        // 현재 취향 벡터 조회
+                        var currentPreference = userPreferenceRepository.get(userId)
+                        val currentData = userPreferenceRepository.getWithMetadata(userId)
+                        var actionCount = currentData?.actionCount ?: 0
 
-                    // 이벤트 순서대로 취향 벡터 갱신
-                    for (event in userEvents) {
-                        val productId = event.productId.toString()
-                        val productVector = productVectors[productId]
+                        // 이벤트 순서대로 취향 벡터 갱신
+                        for (event in userEvents) {
+                            val productId = event.productId.toString()
+                            val productVector = productVectors[productId]
 
-                        if (productVector != null) {
-                            currentPreference = preferenceVectorCalculator.update(
-                                currentPreference = currentPreference,
-                                newProductVector = productVector,
-                                actionType = event.actionType.toString()
-                            )
-                            actionCount++
-                            innerSuccessCount++
-                            updateSuccessCounter.increment()
-                        } else {
-                            updateSkippedCounter.increment()
+                            if (productVector != null) {
+                                currentPreference =
+                                    preferenceVectorCalculator.update(
+                                        currentPreference = currentPreference,
+                                        newProductVector = productVector,
+                                        actionType = event.actionType.toString(),
+                                    )
+                                actionCount++
+                                innerSuccessCount++
+                                updateSuccessCounter.increment()
+                            } else {
+                                updateSkippedCounter.increment()
+                            }
                         }
-                    }
 
-                    // 최종 결과 저장
-                    if (currentPreference != null) {
-                        userPreferenceRepository.save(userId, currentPreference, actionCount)
-                    }
+                        // 최종 결과 저장
+                        if (currentPreference != null) {
+                            userPreferenceRepository.save(userId, currentPreference, actionCount)
+                        }
 
-                    innerSuccessCount
-                }
+                        innerSuccessCount
+                    }
 
                 successCount += userSuccessCount
-
             } catch (e: Exception) {
                 log.error(e) { "Failed to batch update preferences for userId=$userId" }
                 updateFailedCounter.increment(userEvents.size.toDouble())

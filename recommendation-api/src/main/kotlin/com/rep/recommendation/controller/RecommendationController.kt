@@ -6,7 +6,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
 
 private val log = KotlinLogging.logger {}
 
@@ -15,15 +19,14 @@ private val log = KotlinLogging.logger {}
  *
  * 유저에게 개인화된 상품 추천을 제공합니다.
  *
- * @see docs/phase%203.md - 추천 API 명세
+ * @see docs/phase 3.md - 추천 API 명세
  */
 @RestController
 @RequestMapping("/api/v1/recommendations")
 class RecommendationController(
     private val recommendationService: RecommendationService,
-    private val virtualThreadDispatcher: CoroutineDispatcher
+    private val virtualThreadDispatcher: CoroutineDispatcher,
 ) {
-
     /**
      * 인기 상품을 조회합니다 (Cold Start 또는 비로그인 유저용).
      *
@@ -36,18 +39,19 @@ class RecommendationController(
     @GetMapping("/popular")
     fun getPopularProducts(
         @RequestParam(defaultValue = "10") limit: Int,
-        @RequestParam(required = false) category: String?
+        @RequestParam(required = false) category: String?,
     ): ResponseEntity<RecommendationResponse> {
         log.debug { "Popular products request: limit=$limit, category=$category" }
 
-        val response = runBlocking(virtualThreadDispatcher) {
-            recommendationService.getRecommendations(
-                userId = "_anonymous_",  // 임의의 ID로 Cold Start 트리거
-                limit = limit.coerceIn(1, 50),
-                category = category,
-                excludeViewed = false
-            )
-        }
+        val response =
+            runBlocking(virtualThreadDispatcher) {
+                recommendationService.getRecommendations(
+                    userId = "_anonymous_", // 임의의 ID로 Cold Start 트리거
+                    limit = limit.coerceIn(1, 50),
+                    category = category,
+                    excludeViewed = false,
+                )
+            }
 
         return ResponseEntity.ok(response)
     }
@@ -56,9 +60,7 @@ class RecommendationController(
      * 헬스체크 엔드포인트
      */
     @GetMapping("/health")
-    fun health(): ResponseEntity<Map<String, String>> {
-        return ResponseEntity.ok(mapOf("status" to "ok"))
-    }
+    fun health(): ResponseEntity<Map<String, String>> = ResponseEntity.ok(mapOf("status" to "ok"))
 
     /**
      * 유저에게 개인화된 상품을 추천합니다.
@@ -83,20 +85,21 @@ class RecommendationController(
         @PathVariable userId: String,
         @RequestParam(defaultValue = "10") limit: Int,
         @RequestParam(required = false) category: String?,
-        @RequestParam(defaultValue = "true") excludeViewed: Boolean
+        @RequestParam(defaultValue = "true") excludeViewed: Boolean,
     ): ResponseEntity<RecommendationResponse> {
         log.debug { "Recommendation request: userId=$userId, limit=$limit, category=$category" }
 
         // Virtual Thread dispatcher로 runBlocking 실행
         // Blocking I/O 발생 시에도 Virtual Thread가 unmount되어 처리량 유지
-        val response = runBlocking(virtualThreadDispatcher) {
-            recommendationService.getRecommendations(
-                userId = userId,
-                limit = limit.coerceIn(1, 50),
-                category = category,
-                excludeViewed = excludeViewed
-            )
-        }
+        val response =
+            runBlocking(virtualThreadDispatcher) {
+                recommendationService.getRecommendations(
+                    userId = userId,
+                    limit = limit.coerceIn(1, 50),
+                    category = category,
+                    excludeViewed = excludeViewed,
+                )
+            }
 
         log.info {
             "Recommendation response: userId=$userId, count=${response.recommendations.size}, " +

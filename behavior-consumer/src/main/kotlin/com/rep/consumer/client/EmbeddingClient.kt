@@ -1,6 +1,5 @@
 package com.rep.consumer.client
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
@@ -19,11 +18,11 @@ private val log = KotlinLogging.logger {}
  */
 @Component
 class EmbeddingClient(
-    private val embeddingWebClient: WebClient
+    private val embeddingWebClient: WebClient,
 ) {
     companion object {
-        const val QUERY_PREFIX = "query: "      // 검색 쿼리용 (유저 취향)
-        const val PASSAGE_PREFIX = "passage: "  // 문서용 (상품 정보)
+        const val QUERY_PREFIX = "query: " // 검색 쿼리용 (유저 취향)
+        const val PASSAGE_PREFIX = "passage: " // 문서용 (상품 정보)
     }
 
     /**
@@ -33,16 +32,21 @@ class EmbeddingClient(
      * @param prefix e5 모델용 prefix (query: 또는 passage:)
      * @return 벡터 목록
      */
-    suspend fun embed(texts: List<String>, prefix: String = QUERY_PREFIX): List<FloatArray>? {
+    suspend fun embed(
+        texts: List<String>,
+        prefix: String = QUERY_PREFIX,
+    ): List<FloatArray>? {
         if (texts.isEmpty()) return emptyList()
 
         return try {
-            val response = embeddingWebClient.post()
-                .uri("/embed")
-                .bodyValue(EmbedRequest(texts = texts, prefix = prefix))
-                .retrieve()
-                .bodyToMono<EmbedResponse>()
-                .awaitSingleOrNull()
+            val response =
+                embeddingWebClient
+                    .post()
+                    .uri("/embed")
+                    .bodyValue(EmbedRequest(texts = texts, prefix = prefix))
+                    .retrieve()
+                    .bodyToMono<EmbedResponse>()
+                    .awaitSingleOrNull()
 
             response?.embeddings?.map { it.toFloatArray() }
         } catch (e: Exception) {
@@ -54,41 +58,43 @@ class EmbeddingClient(
     /**
      * 단일 텍스트를 벡터로 변환합니다.
      */
-    suspend fun embedSingle(text: String, prefix: String = QUERY_PREFIX): FloatArray? {
-        return embed(listOf(text), prefix)?.firstOrNull()
-    }
+    suspend fun embedSingle(
+        text: String,
+        prefix: String = QUERY_PREFIX,
+    ): FloatArray? = embed(listOf(text), prefix)?.firstOrNull()
 
     /**
      * 헬스체크
      */
-    suspend fun healthCheck(): Boolean {
-        return try {
-            val response = embeddingWebClient.get()
-                .uri("/health")
-                .retrieve()
-                .bodyToMono<HealthResponse>()
-                .awaitSingleOrNull()
+    suspend fun healthCheck(): Boolean =
+        try {
+            val response =
+                embeddingWebClient
+                    .get()
+                    .uri("/health")
+                    .retrieve()
+                    .bodyToMono<HealthResponse>()
+                    .awaitSingleOrNull()
 
             response?.status == "ok"
         } catch (e: Exception) {
             log.warn(e) { "Embedding service health check failed" }
             false
         }
-    }
 }
 
 data class EmbedRequest(
     val texts: List<String>,
-    val prefix: String = "query: "
+    val prefix: String = "query: ",
 )
 
 data class EmbedResponse(
     val embeddings: List<List<Float>>,
-    val dims: Int = 768
+    val dims: Int = 768,
 )
 
 data class HealthResponse(
     val status: String,
     val model: String,
-    val dims: Int
+    val dims: Int,
 )

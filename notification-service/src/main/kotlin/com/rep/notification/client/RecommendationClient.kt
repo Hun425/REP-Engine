@@ -4,8 +4,8 @@ import com.rep.notification.config.NotificationProperties
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
-import mu.KotlinLogging
 import io.netty.channel.ChannelOption
+import mu.KotlinLogging
 import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
@@ -27,32 +27,43 @@ private val log = KotlinLogging.logger {}
 class RecommendationClient(
     private val properties: NotificationProperties,
     meterRegistry: MeterRegistry,
-    webClientBuilder: WebClient.Builder
+    webClientBuilder: WebClient.Builder,
 ) {
-    private val webClient: WebClient = webClientBuilder
-        .baseUrl(properties.recommendation.apiUrl)
-        .clientConnector(ReactorClientHttpConnector(
-            HttpClient.create()
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-                .responseTimeout(Duration.ofSeconds(10))
-        ))
-        .build()
+    private val webClient: WebClient =
+        webClientBuilder
+            .baseUrl(properties.recommendation.apiUrl)
+            .clientConnector(
+                ReactorClientHttpConnector(
+                    HttpClient
+                        .create()
+                        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                        .responseTimeout(Duration.ofSeconds(10)),
+                ),
+            ).build()
 
-    private val requestCounter = Counter.builder("notification.recommendation_client.request")
-        .description("Recommendation API requests")
-        .register(meterRegistry)
+    private val requestCounter =
+        Counter
+            .builder("notification.recommendation_client.request")
+            .description("Recommendation API requests")
+            .register(meterRegistry)
 
-    private val successCounter = Counter.builder("notification.recommendation_client.success")
-        .description("Successful recommendation API requests")
-        .register(meterRegistry)
+    private val successCounter =
+        Counter
+            .builder("notification.recommendation_client.success")
+            .description("Successful recommendation API requests")
+            .register(meterRegistry)
 
-    private val failureCounter = Counter.builder("notification.recommendation_client.failure")
-        .description("Failed recommendation API requests")
-        .register(meterRegistry)
+    private val failureCounter =
+        Counter
+            .builder("notification.recommendation_client.failure")
+            .description("Failed recommendation API requests")
+            .register(meterRegistry)
 
-    private val latencyTimer = Timer.builder("notification.recommendation_client.latency")
-        .description("Recommendation API latency")
-        .register(meterRegistry)
+    private val latencyTimer =
+        Timer
+            .builder("notification.recommendation_client.latency")
+            .description("Recommendation API latency")
+            .register(meterRegistry)
 
     /**
      * 유저별 추천 상품을 조회합니다.
@@ -63,17 +74,19 @@ class RecommendationClient(
      */
     suspend fun getRecommendations(
         userId: String,
-        limit: Int = properties.recommendation.limit
+        limit: Int = properties.recommendation.limit,
     ): RecommendationResponse? {
         requestCounter.increment()
 
         return try {
             val sample = Timer.start()
 
-            val response = webClient.get()
-                .uri("/api/v1/recommendations/{userId}?limit={limit}", userId, limit)
-                .retrieve()
-                .awaitBodyOrNull<RecommendationResponse>()
+            val response =
+                webClient
+                    .get()
+                    .uri("/api/v1/recommendations/{userId}?limit={limit}", userId, limit)
+                    .retrieve()
+                    .awaitBodyOrNull<RecommendationResponse>()
 
             sample.stop(latencyTimer)
 
@@ -86,7 +99,6 @@ class RecommendationClient(
             }
 
             response
-
         } catch (e: Exception) {
             failureCounter.increment()
             log.warn(e) { "Failed to get recommendations for userId=$userId" }
@@ -104,7 +116,7 @@ data class RecommendationResponse(
     val userId: String,
     val recommendations: List<ProductRecommendation>,
     val strategy: String,
-    val latencyMs: Long
+    val latencyMs: Long,
 )
 
 /**
@@ -115,5 +127,5 @@ data class ProductRecommendation(
     val productName: String,
     val category: String,
     val price: Float,
-    val score: Double = 0.0
+    val score: Double = 0.0,
 )

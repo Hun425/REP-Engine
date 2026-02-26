@@ -12,5 +12,5 @@ data class UserPreferenceDocument(
     val userId: String? = null,
     val preferenceVector: List<Float>? = null,
     val actionCount: Int? = null,
-    val updatedAt: Long? = null
+    val updatedAt: Long? = null,
 )

@@ -7,17 +7,17 @@ import java.time.Instant
 // ============================================
 
 data class JaegerServicesResponse(
-    val data: List<String> = emptyList()
+    val data: List<String> = emptyList(),
 )
 
 data class JaegerTracesResponse(
-    val data: List<JaegerTrace> = emptyList()
+    val data: List<JaegerTrace> = emptyList(),
 )
 
 data class JaegerTrace(
     val traceID: String,
     val spans: List<JaegerSpan> = emptyList(),
-    val processes: Map<String, JaegerProcess> = emptyMap()
+    val processes: Map<String, JaegerProcess> = emptyMap(),
 )
 
 data class JaegerSpan(
@@ -29,29 +29,29 @@ data class JaegerSpan(
     val duration: Long,
     val tags: List<JaegerTag> = emptyList(),
     val logs: List<JaegerLog> = emptyList(),
-    val processID: String
+    val processID: String,
 )
 
 data class SpanReference(
     val refType: String,
     val traceID: String,
-    val spanID: String
+    val spanID: String,
 )
 
 data class JaegerTag(
     val key: String,
     val type: String,
-    val value: Any?
+    val value: Any?,
 )
 
 data class JaegerLog(
     val timestamp: Long,
-    val fields: List<JaegerTag> = emptyList()
+    val fields: List<JaegerTag> = emptyList(),
 )
 
 data class JaegerProcess(
     val serviceName: String,
-    val tags: List<JaegerTag> = emptyList()
+    val tags: List<JaegerTag> = emptyList(),
 )
 
 // ============================================
@@ -66,7 +66,7 @@ data class TraceSummary(
     val spanCount: Int,
     val serviceCount: Int,
     val hasError: Boolean,
-    val startTime: Long
+    val startTime: Long,
 )
 
 // ============================================
@@ -74,11 +74,17 @@ data class TraceSummary(
 // ============================================
 
 enum class AnomalyType {
-    SLOW_TRACE, SLOW_SPAN, ERROR_SPAN, DLQ_ROUTED, HIGH_RETRY
+    SLOW_TRACE,
+    SLOW_SPAN,
+    ERROR_SPAN,
+    DLQ_ROUTED,
+    HIGH_RETRY,
 }
 
 enum class Severity {
-    CRITICAL, ERROR, WARNING
+    CRITICAL,
+    ERROR,
+    WARNING,
 }
 
 data class TraceAnomaly(
@@ -96,7 +102,7 @@ data class TraceAnomaly(
     val note: String? = null,
     val isBookmark: Boolean = false,
     val detectedAt: Instant = Instant.now(),
-    val createdAt: Instant = Instant.now()
+    val createdAt: Instant = Instant.now(),
 )
 
 // ============================================
@@ -110,7 +116,7 @@ data class TraceBookmark(
     val operationName: String,
     val durationMs: Long,
     val note: String? = null,
-    val createdAt: Instant = Instant.now()
+    val createdAt: Instant = Instant.now(),
 )
 
 data class CreateBookmarkRequest(
@@ -118,11 +124,11 @@ data class CreateBookmarkRequest(
     val serviceName: String,
     val operationName: String,
     val durationMs: Long,
-    val note: String? = null
+    val note: String? = null,
 )
 
 data class UpdateBookmarkNoteRequest(
-    val note: String
+    val note: String,
 )
 
 // ============================================
@@ -135,11 +141,11 @@ data class AnomalySearchParams(
     val from: Long? = null,
     val to: Long? = null,
     val page: Int = 0,
-    val size: Int = 20
+    val size: Int = 20,
 )
 
 data class AnomalyScanResult(
     val newAnomalies: Int,
     val totalScanned: Int,
-    val scanDurationMs: Long
+    val scanDurationMs: Long,
 )

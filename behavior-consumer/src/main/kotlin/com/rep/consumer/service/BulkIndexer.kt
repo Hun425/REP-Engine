@@ -10,13 +10,13 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.observation.Observation
 import io.micrometer.observation.ObservationRegistry
-import java.util.UUID
-import java.util.concurrent.TimeUnit
 import jakarta.annotation.PostConstruct
 import kotlinx.coroutines.delay
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
 
@@ -32,7 +32,7 @@ private val log = KotlinLogging.logger {}
  * - 실패 시 DLQ 전송
  * - traceId 기반 멱등성 보장
  *
- * @see <a href="docs/phase 2.md">Phase 2: Data Pipeline</a>
+ * @see docs/phase 2.md
  */
 @Component
 class BulkIndexer(
@@ -40,7 +40,7 @@ class BulkIndexer(
     private val dlqProducer: DlqProducer,
     private val properties: ConsumerProperties,
     private val meterRegistry: MeterRegistry,
-    private val observationRegistry: ObservationRegistry
+    private val observationRegistry: ObservationRegistry,
 ) {
     @Value("\${elasticsearch.index.user-behavior:user_behavior_index}")
     private lateinit var indexName: String
@@ -48,34 +48,44 @@ class BulkIndexer(
     // Metrics - @PostConstruct에서 초기화 (indexName이 주입된 후)
     private lateinit var bulkSuccessCounter: Counter
     private lateinit var bulkFailedCounter: Counter
-    private lateinit var bulkBatchFailedCounter: Counter  // 배치 단위 실패 카운터
+    private lateinit var bulkBatchFailedCounter: Counter // 배치 단위 실패 카운터
     private lateinit var retryCounter: Counter
-    private lateinit var bulkIndexTimer: Timer  // 배치 인덱싱 처리 시간
+    private lateinit var bulkIndexTimer: Timer // 배치 인덱싱 처리 시간
 
     @PostConstruct
     fun initMetrics() {
-        bulkSuccessCounter = Counter.builder("es.bulk.success")
-            .tag("index", indexName)
-            .register(meterRegistry)
+        bulkSuccessCounter =
+            Counter
+                .builder("es.bulk.success")
+                .tag("index", indexName)
+                .register(meterRegistry)
 
-        bulkFailedCounter = Counter.builder("es.bulk.failed")
-            .tag("index", indexName)
-            .description("Failed documents count")
-            .register(meterRegistry)
+        bulkFailedCounter =
+            Counter
+                .builder("es.bulk.failed")
+                .tag("index", indexName)
+                .description("Failed documents count")
+                .register(meterRegistry)
 
-        bulkBatchFailedCounter = Counter.builder("es.bulk.batch.failed")
-            .tag("index", indexName)
-            .description("Failed batch count (all retries exhausted)")
-            .register(meterRegistry)
+        bulkBatchFailedCounter =
+            Counter
+                .builder("es.bulk.batch.failed")
+                .tag("index", indexName)
+                .description("Failed batch count (all retries exhausted)")
+                .register(meterRegistry)
 
-        retryCounter = Counter.builder("es.bulk.retry")
-            .tag("index", indexName)
-            .register(meterRegistry)
+        retryCounter =
+            Counter
+                .builder("es.bulk.retry")
+                .tag("index", indexName)
+                .register(meterRegistry)
 
-        bulkIndexTimer = Timer.builder("es.bulk.duration")
-            .tag("index", indexName)
-            .description("Time spent on bulk indexing")
-            .register(meterRegistry)
+        bulkIndexTimer =
+            Timer
+                .builder("es.bulk.duration")
+                .tag("index", indexName)
+                .description("Time spent on bulk indexing")
+                .register(meterRegistry)
 
         log.info { "BulkIndexer initialized with index: $indexName" }
     }
@@ -95,9 +105,11 @@ class BulkIndexer(
     suspend fun indexBatchSync(events: List<UserActionEvent>): Int {
         if (events.isEmpty()) return 0
 
-        val observation = Observation.createNotStarted("es.bulk-index", observationRegistry)
-            .lowCardinalityKeyValue("index", indexName)
-            .lowCardinalityKeyValue("batchSize", events.size.toString())
+        val observation =
+            Observation
+                .createNotStarted("es.bulk-index", observationRegistry)
+                .lowCardinalityKeyValue("index", indexName)
+                .lowCardinalityKeyValue("batchSize", events.size.toString())
         observation.start()
 
         val startTime = System.nanoTime()
@@ -120,14 +132,18 @@ class BulkIndexer(
 
                     if (attempt < properties.maxRetries - 1) {
                         val delayMs = properties.retryDelayMs * (1L shl attempt)
-                        log.warn { "Bulk indexing attempt ${attempt + 1}/${properties.maxRetries} failed, retrying in ${delayMs}ms..." }
+                        log.warn {
+                            "Bulk indexing attempt ${attempt + 1}/${properties.maxRetries} failed, retrying in ${delayMs}ms..."
+                        }
                         delay(delayMs)
                     }
                 }
             }
 
             // 모든 재시도 실패
-            log.error(lastException) { "Bulk indexing failed after ${properties.maxRetries} attempts for ${events.size} events" }
+            log.error(
+                lastException,
+            ) { "Bulk indexing failed after ${properties.maxRetries} attempts for ${events.size} events" }
             bulkBatchFailedCounter.increment()
             bulkFailedCounter.increment(events.size.toDouble())
             sendToDlq(events)
@@ -149,17 +165,20 @@ class BulkIndexer(
         events.forEach { event ->
             bulkRequest.operations { op ->
                 op.index { idx ->
-                    idx.index(indexName)
-                        .id(event.traceId?.toString() ?: UUID.randomUUID().toString())  // Idempotency 보장
-                        .document(mapOf(
-                            "traceId" to (event.traceId?.toString() ?: ""),
-                            "userId" to event.userId.toString(),
-                            "productId" to event.productId.toString(),
-                            "category" to event.category.toString(),
-                            "actionType" to event.actionType.toString(),
-                            "metadata" to event.metadata,
-                            "timestamp" to event.timestamp.toEpochMilli()
-                        ))
+                    idx
+                        .index(indexName)
+                        .id(event.traceId?.toString() ?: UUID.randomUUID().toString()) // Idempotency 보장
+                        .document(
+                            mapOf(
+                                "traceId" to (event.traceId?.toString() ?: ""),
+                                "userId" to event.userId.toString(),
+                                "productId" to event.productId.toString(),
+                                "category" to event.category.toString(),
+                                "actionType" to event.actionType.toString(),
+                                "metadata" to event.metadata,
+                                "timestamp" to event.timestamp.toEpochMilli(),
+                            ),
+                        )
                 }
             }
         }
@@ -171,7 +190,10 @@ class BulkIndexer(
      * Bulk 응답을 처리하고 성공 건수를 반환합니다.
      * 개별 문서 실패 시 해당 이벤트만 DLQ로 전송합니다.
      */
-    private fun handleBulkResponse(response: BulkResponse, events: List<UserActionEvent>): Int {
+    private fun handleBulkResponse(
+        response: BulkResponse,
+        events: List<UserActionEvent>,
+    ): Int {
         var successCount = 0
 
         if (response.errors()) {
