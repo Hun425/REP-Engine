@@ -1,0 +1,12 @@
+services:
+  kafka:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+
+  elasticsearch:
+    environment:
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+
+  redis:
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy volatile-lru
+

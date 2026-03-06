@@ -21,7 +21,10 @@
       "Bash(gh pr list:*)",
       "Bash(ls:*)",
       "Bash(wc:*)",
-      "Bash(brew list:*)"
+      "Bash(brew list:*)",
+      "WebFetch(domain:hey-mi.oopy.io)",
+      "Bash(mdfind:*)",
+      "Bash(done)"
     ]
   }
 }

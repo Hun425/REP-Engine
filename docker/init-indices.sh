@@ -124,7 +124,8 @@ curl -X PUT "$ES_HOST/notification_history_index" -H 'Content-Type: application/
       "channels": { "type": "keyword" },
       "priority": { "type": "keyword" },
       "status": { "type": "keyword" },
-      "sentAt": { "type": "date" }
+      "sentAt": { "type": "date" },
+      "traceId": { "type": "keyword" }
     }
   }
 }'
