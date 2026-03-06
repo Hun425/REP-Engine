@@ -17,7 +17,6 @@ import org.springframework.kafka.core.ProducerFactory
  */
 @Configuration
 class KafkaProducerConfig {
-
     @Value("\${spring.kafka.bootstrap-servers}")
     private lateinit var bootstrapServers: String
 
@@ -26,31 +25,28 @@ class KafkaProducerConfig {
 
     @Bean
     fun notificationProducerFactory(): ProducerFactory<String, NotificationEvent> {
-        val configProps = mapOf(
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
-            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
-            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
-
-            // Reliability settings
-            ProducerConfig.ACKS_CONFIG to "all",
-            ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to true,
-            ProducerConfig.RETRIES_CONFIG to 3,
-            ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION to 5,
-
-            // Performance tuning
-            ProducerConfig.LINGER_MS_CONFIG to 5,
-            ProducerConfig.BATCH_SIZE_CONFIG to 16384,
-
-            // Schema Registry
-            KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl
-        )
+        val configProps =
+            mapOf(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
+                // Reliability settings
+                ProducerConfig.ACKS_CONFIG to "all",
+                ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to true,
+                ProducerConfig.RETRIES_CONFIG to 3,
+                ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION to 5,
+                // Performance tuning
+                ProducerConfig.LINGER_MS_CONFIG to 5,
+                ProducerConfig.BATCH_SIZE_CONFIG to 16384,
+                // Schema Registry
+                KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
+            )
         return DefaultKafkaProducerFactory(configProps)
     }
 
     @Bean
-    fun notificationKafkaTemplate(): KafkaTemplate<String, NotificationEvent> {
-        return KafkaTemplate(notificationProducerFactory()).apply {
+    fun notificationKafkaTemplate(): KafkaTemplate<String, NotificationEvent> =
+        KafkaTemplate(notificationProducerFactory()).apply {
             setObservationEnabled(true)
         }
-    }
 }

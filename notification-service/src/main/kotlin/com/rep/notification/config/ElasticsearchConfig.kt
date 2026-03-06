@@ -19,7 +19,6 @@ private val log = KotlinLogging.logger {}
  */
 @Configuration
 class ElasticsearchConfig {
-
     @Value("\${spring.elasticsearch.uris:http://localhost:9200}")
     private lateinit var elasticsearchUri: String
 

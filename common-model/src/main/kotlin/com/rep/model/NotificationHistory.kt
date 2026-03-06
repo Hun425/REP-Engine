@@ -20,7 +20,7 @@ data class NotificationHistory(
     val channels: List<String>? = null,
     val priority: String? = null,
     val status: String? = null,
-    val sentAt: Instant? = null
+    val sentAt: Instant? = null,
 )
 
 /**
@@ -29,10 +29,13 @@ data class NotificationHistory(
 enum class SendStatus {
     /** 발송 완료 */
     SENT,
+
     /** 발송 실패 */
     FAILED,
+
     /** Rate Limit으로 인한 차단 */
     RATE_LIMITED,
+
     /** 유저가 알림 수신 거부 */
-    USER_OPTED_OUT
+    USER_OPTED_OUT,
 }

@@ -13,29 +13,38 @@ import kotlin.random.Random
  * 상품별 현재 가격/재고를 메모리에서 추적하며,
  * 가격 변동 및 재입고 이벤트를 생성합니다.
  */
-class ProductCatalog(productCountPerCategory: Int) {
-
+class ProductCatalog(
+    productCountPerCategory: Int,
+) {
     companion object {
-        private val CATEGORIES = listOf(
-            "ELECTRONICS", "FASHION", "FOOD", "BEAUTY", "SPORTS", "HOME", "BOOKS"
-        )
+        private val CATEGORIES =
+            listOf(
+                "ELECTRONICS",
+                "FASHION",
+                "FOOD",
+                "BEAUTY",
+                "SPORTS",
+                "HOME",
+                "BOOKS",
+            )
 
-        private val BASE_PRICES = mapOf(
-            "ELECTRONICS" to 100_000..1_500_000,
-            "FASHION" to 20_000..300_000,
-            "FOOD" to 3_000..50_000,
-            "BEAUTY" to 10_000..150_000,
-            "SPORTS" to 30_000..500_000,
-            "HOME" to 15_000..400_000,
-            "BOOKS" to 10_000..40_000
-        )
+        private val BASE_PRICES =
+            mapOf(
+                "ELECTRONICS" to 100_000..1_500_000,
+                "FASHION" to 20_000..300_000,
+                "FOOD" to 3_000..50_000,
+                "BEAUTY" to 10_000..150_000,
+                "SPORTS" to 30_000..500_000,
+                "HOME" to 15_000..400_000,
+                "BOOKS" to 10_000..40_000,
+            )
     }
 
     data class ProductState(
         val productId: String,
         val category: String,
         var price: Float,
-        var stock: Int
+        var stock: Int,
     )
 
     private val products = ConcurrentHashMap<String, ProductState>()
@@ -45,12 +54,13 @@ class ProductCatalog(productCountPerCategory: Int) {
             val priceRange = BASE_PRICES[category] ?: 10_000..100_000
             for (seq in 1..productCountPerCategory) {
                 val productId = "PROD-${category.take(3)}-${seq.toString().padStart(5, '0')}"
-                products[productId] = ProductState(
-                    productId = productId,
-                    category = category,
-                    price = Random.nextInt(priceRange.first, priceRange.last + 1).toFloat(),
-                    stock = Random.nextInt(0, 200)
-                )
+                products[productId] =
+                    ProductState(
+                        productId = productId,
+                        category = category,
+                        price = Random.nextInt(priceRange.first, priceRange.last + 1).toFloat(),
+                        stock = Random.nextInt(0, 200),
+                    )
             }
         }
     }
@@ -66,7 +76,8 @@ class ProductCatalog(productCountPerCategory: Int) {
 
         product.price = newPrice
 
-        return ProductInventoryEvent.newBuilder()
+        return ProductInventoryEvent
+            .newBuilder()
             .setEventId(UUID.randomUUID().toString())
             .setProductId(product.productId)
             .setEventType(InventoryEventType.PRICE_CHANGE)
@@ -85,17 +96,19 @@ class ProductCatalog(productCountPerCategory: Int) {
     fun generateRestock(): ProductInventoryEvent {
         // 재고 0인 상품 찾기
         val outOfStock = products.values.filter { it.stock == 0 }
-        val product = if (outOfStock.isNotEmpty()) {
-            outOfStock.random()
-        } else {
-            // 재고 0인 상품이 없으면 랜덤 상품의 재고를 0으로 만든 후 재입고
-            products.values.random().also { it.stock = 0 }
-        }
+        val product =
+            if (outOfStock.isNotEmpty()) {
+                outOfStock.random()
+            } else {
+                // 재고 0인 상품이 없으면 랜덤 상품의 재고를 0으로 만든 후 재입고
+                products.values.random().also { it.stock = 0 }
+            }
 
         val newStock = Random.nextInt(50, 201)
         product.stock = newStock
 
-        return ProductInventoryEvent.newBuilder()
+        return ProductInventoryEvent
+            .newBuilder()
             .setEventId(UUID.randomUUID().toString())
             .setProductId(product.productId)
             .setEventType(InventoryEventType.STOCK_CHANGE)

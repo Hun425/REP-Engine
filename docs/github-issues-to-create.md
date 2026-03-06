@@ -173,6 +173,41 @@ Docker 환경에서 frontend 컨테이너의 헬스체크가 제대로 동작하
 
 ---
 
+## Issue #5: design: NotificationRateLimiter fail-close 시 알림 유실 복구 방안
+
+### 개요
+NotificationRateLimiter가 Redis 장애 시 fail-close 정책으로 알림을 차단하는데,
+차단된 알림이 DLQ로 가지 않고 조용히 유실되는 구조적 한계가 있습니다.
+
+### 현재 동작
+```
+ProductInventoryEvent (Kafka) → InventoryEventConsumer
+  → EventDetector.detectPriceDrop()
+    → rateLimiter.canSend() == false (Redis 장애)
+      → continue (다음 유저로 건너뜀)
+      → 예외 아님 → DLQ 안 감
+      → 원본 이벤트 offset commit됨 → 복구 불가
+```
+
+- `canSend()`는 Redis 예외를 내부에서 catch하고 `false`를 반환
+- Consumer 입장에서는 정상 처리 완료 → Kafka offset commit
+- 차단된 알림은 메트릭(`notification.rate.fail_close.blocked`)으로만 추적 가능
+- **어떤 유저에게 어떤 알림이 막혔는지 상세 정보 없음**
+
+### 개선 방향 (택 1)
+1. **Circuit Breaker** — N회 연속 Redis 실패 시 일정 시간 fail-open 전환
+2. **로컬 인메모리 캐시 fallback** — Redis 장애 시 Caffeine 등으로 임시 중복 체크
+3. **차단 이벤트 별도 큐 저장** — Redis 복구 후 재처리할 수 있도록 차단된 (userId, productId, type) 정보를 파일/별도 토픽에 저장
+
+### 관련 파일
+- `notification-service/.../service/NotificationRateLimiter.kt` (line 76-81, 117-122)
+- `notification-service/.../service/EventDetector.kt` (line 109-111, 193-195)
+
+### 우선순위
+- **Medium** — 현재 fail-close는 의도된 안전 설계이나, 장시간 Redis 장애 시 알림 유실 위험
+
+---
+
 ## 생성 방법
 
 GitHub CLI가 설치되어 있다면:

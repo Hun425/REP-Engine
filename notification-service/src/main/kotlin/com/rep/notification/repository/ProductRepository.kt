@@ -3,6 +3,7 @@ package com.rep.notification.repository
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import com.rep.model.ProductDocument
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
 
 private val log = KotlinLogging.logger {}
@@ -15,24 +16,22 @@ private val log = KotlinLogging.logger {}
  */
 @Repository
 class ProductRepository(
-    private val esClient: ElasticsearchClient
+    private val esClient: ElasticsearchClient,
+    @Value("\${elasticsearch.index.product:product_index}") private val productIndex: String,
 ) {
-    companion object {
-        private const val INDEX_NAME = "product_index"
-    }
-
     /**
      * 상품 ID로 상품 정보를 조회합니다.
      *
      * @param productId 상품 ID
      * @return 상품 정보 또는 null
      */
-    fun findById(productId: String): ProductDocument? {
-        return try {
-            val response = esClient.get(
-                { g -> g.index(INDEX_NAME).id(productId) },
-                ProductDocument::class.java
-            )
+    fun findById(productId: String): ProductDocument? =
+        try {
+            val response =
+                esClient.get(
+                    { g -> g.index(productIndex).id(productId) },
+                    ProductDocument::class.java,
+                )
 
             if (response.found()) {
                 response.source()
@@ -44,5 +43,4 @@ class ProductRepository(
             log.error(e) { "Failed to get product: $productId" }
             null
         }
-    }
 }

@@ -15,7 +15,6 @@ private val log = KotlinLogging.logger {}
 
 @Configuration
 class ElasticsearchConfig {
-
     @Value("\${elasticsearch.host:localhost}")
     private lateinit var host: String
 
@@ -29,11 +28,12 @@ class ElasticsearchConfig {
     private var transport: RestClientTransport? = null
 
     @Bean
-    fun restClient(): RestClient {
-        return RestClient.builder(
-            HttpHost(host, port, scheme)
-        ).build().also { restClient = it }
-    }
+    fun restClient(): RestClient =
+        RestClient
+            .builder(
+                HttpHost(host, port, scheme),
+            ).build()
+            .also { restClient = it }
 
     @Bean
     fun elasticsearchClient(restClient: RestClient): ElasticsearchClient {

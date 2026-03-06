@@ -13,24 +13,21 @@ import org.springframework.validation.annotation.Validated
 data class RecommendationProperties(
     @field:Valid
     val knn: KnnProperties = KnnProperties(),
-
     @field:Valid
-    val cache: CacheProperties = CacheProperties()
+    val cache: CacheProperties = CacheProperties(),
 )
 
 data class KnnProperties(
     @field:Positive(message = "k must be positive")
-    val k: Int = 10
+    val k: Int = 10,
     // numCandidates는 k * 10으로 동적 계산됨 (docs/phase 3.md 참고)
 )
 
 data class CacheProperties(
     @field:Positive(message = "popularTtlMinutes must be positive")
     val popularTtlMinutes: Long = 10,
-
     @field:Positive(message = "globalCacheSize must be positive")
     val globalCacheSize: Int = 100,
-
     @field:Positive(message = "categoryCacheSize must be positive")
-    val categoryCacheSize: Int = 50
+    val categoryCacheSize: Int = 50,
 )

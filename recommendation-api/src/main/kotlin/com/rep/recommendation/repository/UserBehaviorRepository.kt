@@ -5,6 +5,7 @@ import co.elastic.clients.elasticsearch._types.FieldValue
 import co.elastic.clients.elasticsearch._types.SortOrder
 import co.elastic.clients.json.JsonData
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
 
 private val log = KotlinLogging.logger {}
@@ -17,12 +18,9 @@ private val log = KotlinLogging.logger {}
  */
 @Repository
 class UserBehaviorRepository(
-    private val esClient: ElasticsearchClient
+    private val esClient: ElasticsearchClient,
+    @Value("\${elasticsearch.index.user-behavior:user_behavior_index}") private val behaviorIndex: String,
 ) {
-    companion object {
-        private const val INDEX_NAME = "user_behavior_index"
-    }
-
     /**
      * 유저가 최근에 본 상품 ID 목록을 조회합니다.
      *
@@ -30,47 +28,50 @@ class UserBehaviorRepository(
      * @param limit 조회할 최대 개수
      * @return 상품 ID 목록 (최신순)
      */
-    fun getRecentViewedProducts(userId: String, limit: Int = 100): List<String> {
-        return try {
-            val response = esClient.search({ s ->
-                s.index(INDEX_NAME)
-                    .size(limit)
-                    .query { q ->
-                        q.bool { b ->
-                            b.must { m ->
-                                m.term { t -> t.field("userId").value(userId) }
-                            }
-                            // VIEW, CLICK만 조회 (구매한 상품은 재구매 추천을 위해 제외하지 않음)
-                            b.must { m ->
-                                m.terms { t ->
-                                    t.field("actionType").terms { tv ->
-                                        tv.value(listOf(FieldValue.of("VIEW"), FieldValue.of("CLICK")))
+    fun getRecentViewedProducts(
+        userId: String,
+        limit: Int = 100,
+    ): List<String> =
+        try {
+            val response =
+                esClient.search({ s ->
+                    s
+                        .index(behaviorIndex)
+                        .size(limit)
+                        .query { q ->
+                            q.bool { b ->
+                                b.must { m ->
+                                    m.term { t -> t.field("userId").value(userId) }
+                                }
+                                // VIEW, CLICK만 조회 (구매한 상품은 재구매 추천을 위해 제외하지 않음)
+                                b.must { m ->
+                                    m.terms { t ->
+                                        t.field("actionType").terms { tv ->
+                                            tv.value(listOf(FieldValue.of("VIEW"), FieldValue.of("CLICK")))
+                                        }
                                     }
                                 }
+                                // 최근 7일 이내
+                                b.must { m ->
+                                    m.range { r -> r.field("timestamp").gte(JsonData.of("now-7d")) }
+                                }
+                                b
                             }
-                            // 최근 7일 이내
-                            b.must { m ->
-                                m.range { r -> r.field("timestamp").gte(JsonData.of("now-7d")) }
-                            }
-                            b
-                        }
-                    }
-                    .sort { sort -> sort.field { f -> f.field("timestamp").order(SortOrder.Desc) } }
-                    .source { src -> src.filter { f -> f.includes("productId") } }
-            }, Map::class.java)
+                        }.sort { sort -> sort.field { f -> f.field("timestamp").order(SortOrder.Desc) } }
+                        .source { src -> src.filter { f -> f.includes("productId") } }
+                }, Map::class.java)
 
-            response.hits().hits()
+            response
+                .hits()
+                .hits()
                 .mapNotNull { hit ->
                     @Suppress("UNCHECKED_CAST")
                     (hit.source() as? Map<String, Any>)?.get("productId")?.toString()
-                }
-                .distinct()
-
+                }.distinct()
         } catch (e: Exception) {
             log.error(e) { "Failed to get recent viewed products for userId=$userId" }
             emptyList()
         }
-    }
 
     /**
      * 유저가 최근에 구매한 상품 ID 목록을 조회합니다.
@@ -79,40 +80,43 @@ class UserBehaviorRepository(
      * @param limit 조회할 최대 개수
      * @return 상품 ID 목록 (최신순)
      */
-    fun getRecentPurchasedProducts(userId: String, limit: Int = 50): List<String> {
-        return try {
-            val response = esClient.search({ s ->
-                s.index(INDEX_NAME)
-                    .size(limit)
-                    .query { q ->
-                        q.bool { b ->
-                            b.must { m ->
-                                m.term { t -> t.field("userId").value(userId) }
+    fun getRecentPurchasedProducts(
+        userId: String,
+        limit: Int = 50,
+    ): List<String> =
+        try {
+            val response =
+                esClient.search({ s ->
+                    s
+                        .index(behaviorIndex)
+                        .size(limit)
+                        .query { q ->
+                            q.bool { b ->
+                                b.must { m ->
+                                    m.term { t -> t.field("userId").value(userId) }
+                                }
+                                b.must { m ->
+                                    m.term { t -> t.field("actionType").value("PURCHASE") }
+                                }
+                                // 최근 30일 이내
+                                b.must { m ->
+                                    m.range { r -> r.field("timestamp").gte(JsonData.of("now-30d")) }
+                                }
+                                b
                             }
-                            b.must { m ->
-                                m.term { t -> t.field("actionType").value("PURCHASE") }
-                            }
-                            // 최근 30일 이내
-                            b.must { m ->
-                                m.range { r -> r.field("timestamp").gte(JsonData.of("now-30d")) }
-                            }
-                            b
-                        }
-                    }
-                    .sort { sort -> sort.field { f -> f.field("timestamp").order(SortOrder.Desc) } }
-                    .source { src -> src.filter { f -> f.includes("productId") } }
-            }, Map::class.java)
+                        }.sort { sort -> sort.field { f -> f.field("timestamp").order(SortOrder.Desc) } }
+                        .source { src -> src.filter { f -> f.includes("productId") } }
+                }, Map::class.java)
 
-            response.hits().hits()
+            response
+                .hits()
+                .hits()
                 .mapNotNull { hit ->
                     @Suppress("UNCHECKED_CAST")
                     (hit.source() as? Map<String, Any>)?.get("productId")?.toString()
-                }
-                .distinct()
-
+                }.distinct()
         } catch (e: Exception) {
             log.error(e) { "Failed to get recent purchased products for userId=$userId" }
             emptyList()
         }
-    }
 }

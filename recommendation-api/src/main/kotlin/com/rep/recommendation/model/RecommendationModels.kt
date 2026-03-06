@@ -6,8 +6,8 @@ package com.rep.recommendation.model
 data class RecommendationResponse(
     val userId: String,
     val recommendations: List<ProductRecommendation>,
-    val strategy: String,  // "knn" | "popularity" | "category_best"
-    val latencyMs: Long
+    val strategy: String, // "knn" | "popularity" | "category_best"
+    val latencyMs: Long,
 )
 
 /**
@@ -18,5 +18,5 @@ data class ProductRecommendation(
     val productName: String,
     val category: String,
     val price: Float,
-    val score: Double = 0.0
+    val score: Double = 0.0,
 )

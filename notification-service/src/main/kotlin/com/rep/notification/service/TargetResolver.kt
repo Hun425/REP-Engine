@@ -9,6 +9,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.observation.Observation
 import io.micrometer.observation.ObservationRegistry
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 private val log = KotlinLogging.logger {}
@@ -18,26 +19,27 @@ private val log = KotlinLogging.logger {}
  *
  * ES user_behavior_index에서 특정 상품에 관심을 보인 유저를 집계합니다.
  *
- * @see docs/phase%204.md - Target Resolver
+ * @see docs/phase 4.md - Target Resolver
  */
 @Component
 class TargetResolver(
     private val esClient: ElasticsearchClient,
     private val properties: NotificationProperties,
     meterRegistry: MeterRegistry,
-    private val observationRegistry: ObservationRegistry
+    @Value("\${elasticsearch.index.user-behavior:user_behavior_index}") private val behaviorIndex: String,
+    private val observationRegistry: ObservationRegistry,
 ) {
-    companion object {
-        private const val BEHAVIOR_INDEX = "user_behavior_index"
-    }
+    private val queryCounter =
+        Counter
+            .builder("notification.target.query")
+            .description("Target user queries executed")
+            .register(meterRegistry)
 
-    private val queryCounter = Counter.builder("notification.target.query")
-        .description("Target user queries executed")
-        .register(meterRegistry)
-
-    private val targetFoundCounter = Counter.builder("notification.target.found")
-        .description("Target users found")
-        .register(meterRegistry)
+    private val targetFoundCounter =
+        Counter
+            .builder("notification.target.found")
+            .description("Target users found")
+            .register(meterRegistry)
 
     /**
      * 특정 상품에 관심을 보인 유저 목록을 추출합니다.
@@ -50,52 +52,59 @@ class TargetResolver(
     fun findInterestedUsers(
         productId: String,
         actionTypes: List<String>,
-        withinDays: Int = properties.interestedUserDays
+        withinDays: Int = properties.interestedUserDays,
     ): List<String> {
-        val observation = Observation.createNotStarted("es.target-resolve", observationRegistry)
-            .lowCardinalityKeyValue("productId", productId)
-            .lowCardinalityKeyValue("actionTypes", actionTypes.joinToString(","))
+        val observation =
+            Observation
+                .createNotStarted("es.target-resolve", observationRegistry)
+                .lowCardinalityKeyValue("productId", productId)
+                .lowCardinalityKeyValue("actionTypes", actionTypes.joinToString(","))
         observation.start()
 
         return try {
             queryCounter.increment()
 
-            val response = esClient.search({ s ->
-                s.index(BEHAVIOR_INDEX)
-                    .size(0)  // 집계만 필요
-                    .query { q ->
-                        q.bool { b ->
-                            // 상품 ID 필터
-                            b.must { m ->
-                                m.term { t -> t.field("productId").value(productId) }
-                            }
-                            // 행동 유형 필터
-                            b.must { m ->
-                                m.terms { t ->
-                                    t.field("actionType").terms { tv ->
-                                        tv.value(actionTypes.map { FieldValue.of(it) })
+            val response =
+                esClient.search({ s ->
+                    s
+                        .index(behaviorIndex)
+                        .size(0) // 집계만 필요
+                        .query { q ->
+                            q.bool { b ->
+                                // 상품 ID 필터
+                                b.must { m ->
+                                    m.term { t -> t.field("productId").value(productId) }
+                                }
+                                // 행동 유형 필터
+                                b.must { m ->
+                                    m.terms { t ->
+                                        t.field("actionType").terms { tv ->
+                                            tv.value(actionTypes.map { FieldValue.of(it) })
+                                        }
                                     }
                                 }
-                            }
-                            // 기간 필터
-                            b.must { m ->
-                                m.range { r ->
-                                    r.field("timestamp").gte(JsonData.of("now-${withinDays}d"))
+                                // 기간 필터
+                                b.must { m ->
+                                    m.range { r ->
+                                        r.field("timestamp").gte(JsonData.of("now-${withinDays}d"))
+                                    }
                                 }
+                                b
                             }
-                            b
+                        }.aggregations("users") { agg ->
+                            agg.terms { t ->
+                                t.field("userId").size(properties.targetUserLimit)
+                            }
                         }
-                    }
-                    .aggregations("users") { agg ->
-                        agg.terms { t ->
-                            t.field("userId").size(properties.targetUserLimit)
-                        }
-                    }
-            }, Void::class.java)
+                }, Void::class.java)
 
-            val users = response.aggregations()["users"]
-                ?.sterms()?.buckets()?.array()
-                ?.map { it.key().stringValue() } ?: emptyList()
+            val users =
+                response
+                    .aggregations()["users"]
+                    ?.sterms()
+                    ?.buckets()
+                    ?.array()
+                    ?.map { it.key().stringValue() } ?: emptyList()
 
             targetFoundCounter.increment(users.size.toDouble())
 
@@ -106,7 +115,6 @@ class TargetResolver(
 
             observation.stop()
             users
-
         } catch (e: Exception) {
             log.error(e) { "Failed to find interested users for productId=$productId" }
             observation.error(e)
@@ -122,11 +130,10 @@ class TargetResolver(
      * @param productId 상품 ID
      * @return 유저 ID 목록
      */
-    fun findUsersWithCartItem(productId: String): List<String> {
-        return findInterestedUsers(
+    fun findUsersWithCartItem(productId: String): List<String> =
+        findInterestedUsers(
             productId = productId,
             actionTypes = listOf("ADD_TO_CART"),
-            withinDays = properties.cartUserDays
+            withinDays = properties.cartUserDays,
         )
-    }
 }

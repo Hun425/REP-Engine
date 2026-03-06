@@ -15,9 +15,8 @@ import org.springframework.kafka.listener.ContainerProperties
 
 @Configuration
 class KafkaConsumerConfig(
-    private val consumerProperties: ConsumerProperties
+    private val consumerProperties: ConsumerProperties,
 ) {
-
     @Value("\${spring.kafka.bootstrap-servers}")
     private lateinit var bootstrapServers: String
 
@@ -26,31 +25,29 @@ class KafkaConsumerConfig(
 
     @Bean
     fun consumerFactory(): ConsumerFactory<String, UserActionEvent> {
-        val props = mapOf(
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
-            // Group ID는 application.yml 또는 @KafkaListener에서 설정
-            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
-            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to KafkaAvroDeserializer::class.java,
-
-            // 성능 튜닝 - Phase 2 문서 기준
-            ConsumerConfig.MAX_POLL_RECORDS_CONFIG to consumerProperties.bulkSize,  // Bulk 크기와 일치
-            ConsumerConfig.FETCH_MIN_BYTES_CONFIG to 1024,     // 최소 fetch 크기
-            ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG to 500,    // 최대 대기 시간
-
-            // 안정성 - 수동 커밋으로 메시지 유실 방지
-            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
-            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
-
-            // Avro Schema Registry
-            KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
-            KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true
-        )
+        val props =
+            mapOf(
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
+                // Group ID는 application.yml 또는 @KafkaListener에서 설정
+                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to KafkaAvroDeserializer::class.java,
+                // 성능 튜닝 - Phase 2 문서 기준
+                ConsumerConfig.MAX_POLL_RECORDS_CONFIG to consumerProperties.bulkSize, // Bulk 크기와 일치
+                ConsumerConfig.FETCH_MIN_BYTES_CONFIG to 1024, // 최소 fetch 크기
+                ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG to 500, // 최대 대기 시간
+                // 안정성 - 수동 커밋으로 메시지 유실 방지
+                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
+                // Avro Schema Registry
+                KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
+                KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true,
+            )
         return DefaultKafkaConsumerFactory(props)
     }
 
     @Bean
-    fun kafkaListenerContainerFactory(): ConcurrentKafkaListenerContainerFactory<String, UserActionEvent> {
-        return ConcurrentKafkaListenerContainerFactory<String, UserActionEvent>().apply {
+    fun kafkaListenerContainerFactory(): ConcurrentKafkaListenerContainerFactory<String, UserActionEvent> =
+        ConcurrentKafkaListenerContainerFactory<String, UserActionEvent>().apply {
             consumerFactory = consumerFactory()
             // 수동 커밋 - 배치 처리 완료 즉시 커밋
             containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
@@ -62,5 +59,4 @@ class KafkaConsumerConfig(
             // 분산 트레이싱 Observation 활성화
             containerProperties.isObservationEnabled = true
         }
-    }
 }

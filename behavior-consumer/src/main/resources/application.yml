@@ -42,6 +42,8 @@ elasticsearch:
   scheme: ${ELASTICSEARCH_SCHEME:http}
   index:
     user-behavior: user_behavior_index
+    product: product_index
+    user-preference: user_preference_index
 
 # Embedding Service (Phase 3)
 embedding:
@@ -118,6 +120,8 @@ elasticsearch:
   scheme: http
   index:
     user-behavior: user_behavior_index
+    product: product_index
+    user-preference: user_preference_index
 
 embedding:
   service:

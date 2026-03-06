@@ -1,0 +1,30 @@
+root = true
+
+[*.{kt,kts,java,js,jsx,ts,tsx}]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+max_line_length = 120
+trim_trailing_whitespace = true
+
+[*.{js,jsx,ts,tsx,json,md,yml,yaml}]
+indent_size = 2
+
+[*.md]
+max_line_length = off
+
+[*.{kt,kts}]
+ij_kotlin_name_count_to_use_star_import = 999
+ij_kotlin_name_count_to_use_star_import_for_members = 999
+ktlint_standard_trailing-comma-on-declaration-site = disabled
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_function-expression-body = disabled
+ktlint_standard_multiline-expression-wrapping = disabled
+ktlint_standard_chain-method-continuation = disabled
+ktlint_standard_function-signature = disabled
+ktlint_standard_argument-list-wrapping = disabled
+ktlint_standard_function-literal = disabled
+ktlint_standard_if-else-wrapping = disabled
+ktlint_standard_max-line-length = disabled

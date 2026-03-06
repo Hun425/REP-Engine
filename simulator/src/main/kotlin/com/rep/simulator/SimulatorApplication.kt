@@ -21,27 +21,27 @@ private val log = KotlinLogging.logger {}
 @EnableScheduling
 @EnableConfigurationProperties(SimulatorProperties::class, LoadTestProperties::class, TracingProperties::class)
 class SimulatorApplication {
-
     @Bean
     fun run(
         simulator: TrafficSimulator,
-        properties: SimulatorProperties
-    ): CommandLineRunner = CommandLineRunner {
-        if (properties.enabled) {
-            log.info { "=".repeat(60) }
-            log.info { "REP-Engine Traffic Simulator Starting..." }
-            log.info { "=".repeat(60) }
-            log.info { "Configuration:" }
-            log.info { "  - User Count: ${properties.userCount}" }
-            log.info { "  - Delay (ms): ${properties.delayMillis}" }
-            log.info { "  - Topic: ${properties.topic}" }
-            log.info { "=".repeat(60) }
+        properties: SimulatorProperties,
+    ): CommandLineRunner =
+        CommandLineRunner {
+            if (properties.enabled) {
+                log.info { "=".repeat(60) }
+                log.info { "REP-Engine Traffic Simulator Starting..." }
+                log.info { "=".repeat(60) }
+                log.info { "Configuration:" }
+                log.info { "  - User Count: ${properties.userCount}" }
+                log.info { "  - Delay (ms): ${properties.delayMillis}" }
+                log.info { "  - Topic: ${properties.topic}" }
+                log.info { "=".repeat(60) }
 
-            simulator.startSimulation()
-        } else {
-            log.info { "Simulator is disabled. Set SIMULATOR_ENABLED=true to enable." }
+                simulator.startSimulation()
+            } else {
+                log.info { "Simulator is disabled. Set SIMULATOR_ENABLED=true to enable." }
+            }
         }
-    }
 }
 
 /**
@@ -51,7 +51,7 @@ class SimulatorApplication {
  */
 @Component
 class SimulatorLifecycleManager(
-    private val simulator: TrafficSimulator
+    private val simulator: TrafficSimulator,
 ) : ApplicationListener<ContextClosedEvent> {
     override fun onApplicationEvent(event: ContextClosedEvent) {
         log.info { "Context closing, stopping simulator..." }

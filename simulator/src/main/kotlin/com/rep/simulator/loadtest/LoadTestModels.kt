@@ -7,7 +7,7 @@ import java.time.Instant
 enum class LoadTestScenario {
     PIPELINE_STRESS,
     RECOMMENDATION_LOAD,
-    NOTIFICATION_LOAD
+    NOTIFICATION_LOAD,
 }
 
 enum class LoadTestPhase {
@@ -15,14 +15,14 @@ enum class LoadTestPhase {
     RUNNING,
     STOPPING,
     COMPLETED,
-    FAILED
+    FAILED,
 }
 
 // === Request Models ===
 
 data class LoadTestStartRequest(
     val scenario: LoadTestScenario,
-    val config: LoadTestConfig
+    val config: LoadTestConfig,
 )
 
 data class LoadTestConfig(
@@ -31,13 +31,13 @@ data class LoadTestConfig(
     val concurrentUsers: Int = 10,
     val durationSec: Int = 60,
     val requestIntervalMs: Long = 200,
-    val inventoryEnabled: Boolean = true
+    val inventoryEnabled: Boolean = true,
 )
 
 data class StageConfig(
     val userCount: Int,
     val durationSec: Int,
-    val cooldownSec: Int = 5
+    val cooldownSec: Int = 5,
 )
 
 // === Status / Metrics ===
@@ -50,7 +50,7 @@ data class LoadTestStatus(
     val elapsedSec: Long = 0,
     val currentStage: Int = 0,
     val totalStages: Int = 0,
-    val metrics: LoadTestMetrics? = null
+    val metrics: LoadTestMetrics? = null,
 )
 
 data class LoadTestMetrics(
@@ -68,13 +68,13 @@ data class LoadTestMetrics(
     val redisMemoryUsedBytes: Double? = null,
     val totalRequestsSent: Long = 0,
     val totalErrors: Long = 0,
-    val avgLatencyMs: Double = 0.0
+    val avgLatencyMs: Double = 0.0,
 )
 
 data class TimestampedMetrics(
     val timestamp: Instant,
     val elapsedSec: Long,
-    val metrics: LoadTestMetrics
+    val metrics: LoadTestMetrics,
 )
 
 // === Result Models ===
@@ -88,7 +88,7 @@ data class LoadTestResult(
     val durationSec: Long,
     val finalMetrics: LoadTestMetrics,
     val metricsTimeSeries: List<TimestampedMetrics>,
-    val note: String = ""
+    val note: String = "",
 )
 
 data class LoadTestResultSummary(
@@ -102,9 +102,9 @@ data class LoadTestResultSummary(
     val kafkaConsumerLag: Double?,
     val totalErrors: Long,
     val totalRequestsSent: Long,
-    val avgLatencyMs: Double
+    val avgLatencyMs: Double,
 )
 
 data class NoteUpdateRequest(
-    val note: String
+    val note: String,
 )

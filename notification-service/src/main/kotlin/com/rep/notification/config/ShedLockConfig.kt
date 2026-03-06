@@ -19,7 +19,6 @@ import org.springframework.data.redis.connection.RedisConnectionFactory
 @Configuration
 @EnableSchedulerLock(defaultLockAtMostFor = "1h")
 class ShedLockConfig {
-
     /**
      * Redis 기반 락 제공자
      *
@@ -27,7 +26,6 @@ class ShedLockConfig {
      * @return Redis 락 제공자 (환경 이름: rep-notification)
      */
     @Bean
-    fun lockProvider(connectionFactory: RedisConnectionFactory): LockProvider {
-        return RedisLockProvider(connectionFactory, "rep-notification")
-    }
+    fun lockProvider(connectionFactory: RedisConnectionFactory): LockProvider =
+        RedisLockProvider(connectionFactory, "rep-notification")
 }

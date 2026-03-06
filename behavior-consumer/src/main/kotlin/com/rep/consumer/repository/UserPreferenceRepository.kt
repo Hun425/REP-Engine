@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Repository
 import java.time.Duration
@@ -32,11 +33,11 @@ private val log = KotlinLogging.logger {}
 class UserPreferenceRepository(
     private val redisTemplate: ReactiveRedisTemplate<String, String>,
     private val esClient: ElasticsearchClient,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    @Value("\${elasticsearch.index.user-preference:user_preference_index}") private val userPreferenceIndex: String,
 ) {
     companion object {
         private const val KEY_PREFIX = "user:preference:"
-        private const val ES_INDEX = "user_preference_index"
         private val TTL = Duration.ofHours(24)
     }
 
@@ -63,18 +64,24 @@ class UserPreferenceRepository(
      * @param vector 취향 벡터
      * @param actionCount 누적 행동 수
      */
-    suspend fun save(userId: String, vector: FloatArray, actionCount: Int = 1) {
+    suspend fun save(
+        userId: String,
+        vector: FloatArray,
+        actionCount: Int = 1,
+    ) {
         val key = "$KEY_PREFIX$userId"
         val updatedAt = System.currentTimeMillis()
-        val data = UserPreferenceData(
-            preferenceVector = vector.toList(),
-            actionCount = actionCount,
-            updatedAt = updatedAt
-        )
+        val data =
+            UserPreferenceData(
+                preferenceVector = vector.toList(),
+                actionCount = actionCount,
+                updatedAt = updatedAt,
+            )
 
         try {
             // 1. Redis 저장 (Primary)
-            redisTemplate.opsForValue()
+            redisTemplate
+                .opsForValue()
                 .set(key, objectMapper.writeValueAsString(data), TTL)
                 .awaitSingle()
 
@@ -90,7 +97,6 @@ class UserPreferenceRepository(
                     log.warn(e) { "ES backup failed for userId=$userId (best-effort, Redis is primary)" }
                 }
             }
-
         } catch (e: Exception) {
             log.error(e) { "Failed to save preference vector for userId=$userId to Redis" }
             throw e
@@ -119,10 +125,11 @@ class UserPreferenceRepository(
             } else {
                 // 2. Redis 미스 → ES에서 복구
                 log.debug { "Cache miss for userId=$userId, trying ES fallback" }
-                getFromEs(userId)?.also { (vector, actionCount) ->
-                    // Redis에 다시 캐싱 (actionCount 보존)
-                    save(userId, vector, actionCount)
-                }?.first  // Pair에서 vector만 반환
+                getFromEs(userId)
+                    ?.also { (vector, actionCount) ->
+                        // Redis에 다시 캐싱 (actionCount 보존)
+                        save(userId, vector, actionCount)
+                    }?.first // Pair에서 vector만 반환
             }
         } catch (e: Exception) {
             log.error(e) { "Failed to get preference vector for userId=$userId" }
@@ -151,21 +158,28 @@ class UserPreferenceRepository(
      * Race Condition 방지: External versioning으로 updatedAt이 더 최신인 경우만 저장.
      * 구버전 데이터가 뒤늦게 도착해도 신버전을 덮어쓰지 않습니다.
      */
-    private fun saveToEs(userId: String, vector: FloatArray, actionCount: Int, updatedAt: Long) {
+    private fun saveToEs(
+        userId: String,
+        vector: FloatArray,
+        actionCount: Int,
+        updatedAt: Long,
+    ) {
         try {
-            val document = mapOf(
-                "userId" to userId,
-                "preferenceVector" to vector.toList(),
-                "actionCount" to actionCount,
-                "updatedAt" to updatedAt
-            )
+            val document =
+                mapOf(
+                    "userId" to userId,
+                    "preferenceVector" to vector.toList(),
+                    "actionCount" to actionCount,
+                    "updatedAt" to updatedAt,
+                )
 
             esClient.index { idx ->
-                idx.index(ES_INDEX)
+                idx
+                    .index(userPreferenceIndex)
                     .id(userId)
                     .document(document)
                     .versionType(VersionType.External)
-                    .version(updatedAt)  // updatedAt을 version으로 사용
+                    .version(updatedAt) // updatedAt을 version으로 사용
             }
 
             log.debug { "Backed up preference vector for userId=$userId to ES (version=$updatedAt)" }
@@ -187,12 +201,13 @@ class UserPreferenceRepository(
      *
      * @return Pair(vector, actionCount) 또는 null
      */
-    private fun getFromEs(userId: String): Pair<FloatArray, Int>? {
-        return try {
-            val response = esClient.get(
-                { g -> g.index(ES_INDEX).id(userId) },
-                UserPreferenceDocument::class.java
-            )
+    private fun getFromEs(userId: String): Pair<FloatArray, Int>? =
+        try {
+            val response =
+                esClient.get(
+                    { g -> g.index(userPreferenceIndex).id(userId) },
+                    UserPreferenceDocument::class.java,
+                )
 
             if (response.found()) {
                 val source = response.source()
@@ -207,5 +222,4 @@ class UserPreferenceRepository(
             log.warn(e) { "Failed to get preference vector from ES for userId=$userId" }
             null
         }
-    }
 }

@@ -1,6 +1,16 @@
 package com.rep.simulator.loadtest
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import mu.KotlinLogging
 import org.springframework.boot.web.client.RestTemplateBuilder
 import org.springframework.stereotype.Component
@@ -18,7 +28,7 @@ private val log = KotlinLogging.logger {}
  */
 @Component
 class RecommendationLoadGenerator(
-    private val properties: LoadTestProperties
+    private val properties: LoadTestProperties,
 ) {
     private val virtualThreadDispatcher = Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
     private val scope = CoroutineScope(virtualThreadDispatcher + SupervisorJob())
@@ -29,12 +39,16 @@ class RecommendationLoadGenerator(
     private val totalErrors = AtomicLong(0)
     private val totalLatencyMs = AtomicLong(0)
 
-    private val restTemplate = RestTemplateBuilder()
-        .connectTimeout(Duration.ofSeconds(3))
-        .readTimeout(Duration.ofSeconds(5))
-        .build()
+    private val restTemplate =
+        RestTemplateBuilder()
+            .connectTimeout(Duration.ofSeconds(3))
+            .readTimeout(Duration.ofSeconds(5))
+            .build()
 
-    fun start(concurrentUsers: Int, requestIntervalMs: Long) {
+    fun start(
+        concurrentUsers: Int,
+        requestIntervalMs: Long,
+    ) {
         if (isRunning.compareAndSet(false, true)) {
             totalRequests.set(0)
             totalErrors.set(0)
@@ -42,20 +56,25 @@ class RecommendationLoadGenerator(
 
             log.info { "Starting recommendation load: $concurrentUsers users, interval=${requestIntervalMs}ms" }
 
-            loadJob = scope.launch {
-                (1..concurrentUsers).map { i ->
-                    async {
-                        val userId = "USER-${i.toString().padStart(6, '0')}"
-                        runUserLoop(userId, requestIntervalMs)
-                    }
-                }.awaitAll()
-            }
+            loadJob =
+                scope.launch {
+                    (1..concurrentUsers)
+                        .map { i ->
+                            async {
+                                val userId = "USER-${i.toString().padStart(6, '0')}"
+                                runUserLoop(userId, requestIntervalMs)
+                            }
+                        }.awaitAll()
+                }
         } else {
             log.warn { "Recommendation load generator is already running" }
         }
     }
 
-    private suspend fun runUserLoop(userId: String, intervalMs: Long) {
+    private suspend fun runUserLoop(
+        userId: String,
+        intervalMs: Long,
+    ) {
         while (currentCoroutineContext().isActive) {
             try {
                 val startTime = System.currentTimeMillis()
@@ -87,15 +106,16 @@ class RecommendationLoadGenerator(
 
     fun getStats(): LoadGeneratorStats {
         val requests = totalRequests.get()
-        val avgLatency = if (requests - totalErrors.get() > 0) {
-            totalLatencyMs.get().toDouble() / (requests - totalErrors.get())
-        } else {
-            0.0
-        }
+        val avgLatency =
+            if (requests - totalErrors.get() > 0) {
+                totalLatencyMs.get().toDouble() / (requests - totalErrors.get())
+            } else {
+                0.0
+            }
         return LoadGeneratorStats(
             totalRequests = requests,
             totalErrors = totalErrors.get(),
-            avgLatencyMs = avgLatency
+            avgLatencyMs = avgLatency,
         )
     }
 
@@ -104,6 +124,6 @@ class RecommendationLoadGenerator(
     data class LoadGeneratorStats(
         val totalRequests: Long,
         val totalErrors: Long,
-        val avgLatencyMs: Double
+        val avgLatencyMs: Double,
     )
 }

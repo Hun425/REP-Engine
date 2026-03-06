@@ -18,18 +18,19 @@ import java.util.concurrent.TimeUnit
  */
 @Configuration
 class WebClientConfig(
-    private val embeddingProperties: EmbeddingProperties
+    private val embeddingProperties: EmbeddingProperties,
 ) {
-
     @Bean
     fun embeddingWebClient(builder: WebClient.Builder): WebClient {
-        val httpClient = HttpClient.create()
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, embeddingProperties.timeoutMs.toInt())
-            .responseTimeout(Duration.ofMillis(embeddingProperties.timeoutMs))
-            .doOnConnected { conn ->
-                conn.addHandlerLast(ReadTimeoutHandler(embeddingProperties.timeoutMs, TimeUnit.MILLISECONDS))
-                conn.addHandlerLast(WriteTimeoutHandler(embeddingProperties.timeoutMs, TimeUnit.MILLISECONDS))
-            }
+        val httpClient =
+            HttpClient
+                .create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, embeddingProperties.timeoutMs.toInt())
+                .responseTimeout(Duration.ofMillis(embeddingProperties.timeoutMs))
+                .doOnConnected { conn ->
+                    conn.addHandlerLast(ReadTimeoutHandler(embeddingProperties.timeoutMs, TimeUnit.MILLISECONDS))
+                    conn.addHandlerLast(WriteTimeoutHandler(embeddingProperties.timeoutMs, TimeUnit.MILLISECONDS))
+                }
 
         return builder
             .baseUrl(embeddingProperties.url)

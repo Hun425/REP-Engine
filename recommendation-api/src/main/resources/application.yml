@@ -20,6 +20,10 @@ elasticsearch:
   host: ${ELASTICSEARCH_HOST:localhost}
   port: ${ELASTICSEARCH_PORT:9200}
   scheme: ${ELASTICSEARCH_SCHEME:http}
+  index:
+    product: product_index
+    user-behavior: user_behavior_index
+    user-preference: user_preference_index
 
 # 추천 설정
 recommendation:
@@ -77,6 +81,10 @@ spring:
 elasticsearch:
   host: elasticsearch
   port: 9200
+  index:
+    product: product_index
+    user-behavior: user_behavior_index
+    user-preference: user_preference_index
 
 server:
   port: 8082

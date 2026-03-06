@@ -7,5 +7,5 @@ data class LoadTestProperties(
     val prometheusUrl: String = "http://localhost:9090",
     val recommendationApiUrl: String = "http://localhost:8080",
     val resultsDir: String = "./load-test-results",
-    val metricsCollectIntervalMs: Long = 3000
+    val metricsCollectIntervalMs: Long = 3000,
 )

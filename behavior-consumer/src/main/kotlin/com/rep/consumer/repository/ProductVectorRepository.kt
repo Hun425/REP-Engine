@@ -5,6 +5,7 @@ import co.elastic.clients.elasticsearch.core.GetResponse
 import com.rep.consumer.config.ConsumerProperties
 import com.rep.model.ProductDocument
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
 
 private val log = KotlinLogging.logger {}
@@ -14,17 +15,14 @@ private val log = KotlinLogging.logger {}
  *
  * Elasticsearch의 product_index에서 상품 벡터를 조회합니다.
  *
- * @see docs/phase%202.md
+ * @see docs/phase 2.md
  */
 @Repository
 class ProductVectorRepository(
     private val esClient: ElasticsearchClient,
-    private val consumerProperties: ConsumerProperties
+    private val consumerProperties: ConsumerProperties,
+    @Value("\${elasticsearch.index.product:product_index}") private val productIndex: String,
 ) {
-    companion object {
-        private const val INDEX_NAME = "product_index"
-    }
-
     private val expectedDimensions: Int get() = consumerProperties.vectorDimensions
 
     /**
@@ -35,17 +33,20 @@ class ProductVectorRepository(
      */
     fun getProductVector(productId: String): FloatArray? {
         return try {
-            val response: GetResponse<ProductDocument> = esClient.get(
-                { g -> g.index(INDEX_NAME).id(productId) },
-                ProductDocument::class.java
-            )
+            val response: GetResponse<ProductDocument> =
+                esClient.get(
+                    { g -> g.index(productIndex).id(productId) },
+                    ProductDocument::class.java,
+                )
 
             if (response.found()) {
                 val vector = response.source()?.productVector?.toFloatArray()
 
                 // 벡터 차원 검증
                 if (vector != null && vector.size != expectedDimensions) {
-                    log.warn { "Product $productId has invalid vector dimension: ${vector.size}, expected: $expectedDimensions" }
+                    log.warn {
+                        "Product $productId has invalid vector dimension: ${vector.size}, expected: $expectedDimensions"
+                    }
                     return null
                 }
 
@@ -70,12 +71,14 @@ class ProductVectorRepository(
         if (productIds.isEmpty()) return emptyMap()
 
         return try {
-            val response = esClient.mget(
-                { m -> m.index(INDEX_NAME).ids(productIds) },
-                ProductDocument::class.java
-            )
+            val response =
+                esClient.mget(
+                    { m -> m.index(productIndex).ids(productIds) },
+                    ProductDocument::class.java,
+                )
 
-            response.docs()
+            response
+                .docs()
                 .filter { it.result()?.found() == true }
                 .mapNotNull { doc ->
                     val id = doc.result()?.id() ?: return@mapNotNull null
@@ -84,15 +87,18 @@ class ProductVectorRepository(
 
                     // 벡터 차원 검증
                     if (vector != null && vector.size != expectedDimensions) {
-                        log.warn { "Product $id has invalid vector dimension: ${vector.size}, expected: $expectedDimensions" }
+                        log.warn {
+                            "Product $id has invalid vector dimension: ${vector.size}, expected: $expectedDimensions"
+                        }
                         return@mapNotNull null
                     }
 
                     if (vector != null) {
                         id to vector
-                    } else null
-                }
-                .toMap()
+                    } else {
+                        null
+                    }
+                }.toMap()
         } catch (e: Exception) {
             log.error(e) { "Failed to get product vectors for ${productIds.size} products" }
             emptyMap()

@@ -14,7 +14,7 @@ data class UserPreferenceData(
     val preferenceVector: List<Float>,
     val actionCount: Int = 1,
     val updatedAt: Long = System.currentTimeMillis(),
-    val version: Long = 1
+    val version: Long = 1,
 ) {
     companion object {
         const val VECTOR_DIMENSIONS = 768

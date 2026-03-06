@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { TraceSearch } from './components/TraceSearch'
 import { TraceList } from './components/TraceList'
 import { TraceDetail } from './components/TraceDetail'
@@ -82,11 +83,24 @@ export function TracingPage() {
             </CardContent>
           </Card>
 
-          <TraceList
-            traces={traces}
-            selectedTraceId={selectedTraceId}
-            onSelect={setSelectedTraceId}
-          />
+          {tracesLoading ? (
+            <div className="border rounded-lg p-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex gap-4 items-center">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-16 ml-auto" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <TraceList
+              traces={traces}
+              selectedTraceId={selectedTraceId}
+              onSelect={setSelectedTraceId}
+            />
+          )}
 
           {selectedTraceId && (
             <TraceDetail traceId={selectedTraceId} />

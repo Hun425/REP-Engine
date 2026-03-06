@@ -20,7 +20,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory
-import org.springframework.kafka.core.*
+import org.springframework.kafka.core.ConsumerFactory
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory
+import org.springframework.kafka.core.DefaultKafkaProducerFactory
+import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.listener.CommonErrorHandler
 import org.springframework.kafka.listener.ContainerProperties
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer
@@ -43,9 +46,8 @@ private val log = KotlinLogging.logger {}
 @Configuration
 class KafkaConsumerConfig(
     private val properties: NotificationProperties,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
 ) {
-
     @Value("\${spring.kafka.bootstrap-servers}")
     private lateinit var bootstrapServers: String
 
@@ -54,7 +56,8 @@ class KafkaConsumerConfig(
 
     // DLQ 메트릭
     private val dlqSentCounter by lazy {
-        Counter.builder("kafka.dlq.sent")
+        Counter
+            .builder("kafka.dlq.sent")
             .description("Messages sent to DLQ")
             .register(meterRegistry)
     }
@@ -64,16 +67,17 @@ class KafkaConsumerConfig(
      */
     @Bean
     fun inventoryConsumerFactory(): ConsumerFactory<String, ProductInventoryEvent> {
-        val props = mapOf(
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
-            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
-            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to KafkaAvroDeserializer::class.java,
-            ConsumerConfig.MAX_POLL_RECORDS_CONFIG to 100,
-            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
-            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
-            KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
-            KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true
-        )
+        val props =
+            mapOf(
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
+                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to KafkaAvroDeserializer::class.java,
+                ConsumerConfig.MAX_POLL_RECORDS_CONFIG to 100,
+                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
+                KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
+                KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true,
+            )
         return DefaultKafkaConsumerFactory(props)
     }
 
@@ -82,16 +86,17 @@ class KafkaConsumerConfig(
      */
     @Bean
     fun notificationConsumerFactory(): ConsumerFactory<String, NotificationEvent> {
-        val props = mapOf(
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
-            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
-            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to KafkaAvroDeserializer::class.java,
-            ConsumerConfig.MAX_POLL_RECORDS_CONFIG to 100,
-            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
-            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
-            KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
-            KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true
-        )
+        val props =
+            mapOf(
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
+                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to KafkaAvroDeserializer::class.java,
+                ConsumerConfig.MAX_POLL_RECORDS_CONFIG to 100,
+                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
+                KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
+                KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true,
+            )
         return DefaultKafkaConsumerFactory(props)
     }
 
@@ -101,16 +106,17 @@ class KafkaConsumerConfig(
     @Bean
     @ConditionalOnProperty("notification.dlq.enabled", havingValue = "true", matchIfMissing = true)
     fun dlqKafkaTemplate(): KafkaTemplate<String, Any> {
-        val props = mapOf(
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
-            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
-            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
-            ProducerConfig.ACKS_CONFIG to "all",
-            ProducerConfig.RETRIES_CONFIG to 3,
-            KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
-            // DLQ에서는 스키마 자동 등록 허용 (같은 스키마지만 토픽이 다름)
-            KafkaAvroSerializerConfig.AUTO_REGISTER_SCHEMAS to true
-        )
+        val props =
+            mapOf(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
+                ProducerConfig.ACKS_CONFIG to "all",
+                ProducerConfig.RETRIES_CONFIG to 3,
+                KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to schemaRegistryUrl,
+                // DLQ에서는 스키마 자동 등록 허용 (같은 스키마지만 토픽이 다름)
+                KafkaAvroSerializerConfig.AUTO_REGISTER_SCHEMAS to true,
+            )
         val producerFactory = DefaultKafkaProducerFactory<String, Any>(props)
         return KafkaTemplate(producerFactory).apply {
             setObservationEnabled(true)
@@ -124,10 +130,8 @@ class KafkaConsumerConfig(
      */
     @Bean
     @ConditionalOnProperty("notification.dlq.enabled", havingValue = "true", matchIfMissing = true)
-    fun deadLetterPublishingRecoverer(
-        dlqKafkaTemplate: KafkaTemplate<String, Any>
-    ): DeadLetterPublishingRecoverer {
-        return DeadLetterPublishingRecoverer(dlqKafkaTemplate) { record: ConsumerRecord<*, *>, ex: Exception ->
+    fun deadLetterPublishingRecoverer(dlqKafkaTemplate: KafkaTemplate<String, Any>): DeadLetterPublishingRecoverer =
+        DeadLetterPublishingRecoverer(dlqKafkaTemplate) { record: ConsumerRecord<*, *>, ex: Exception ->
             val dlqTopic = record.topic() + properties.dlq.topicSuffix
             dlqSentCounter.increment()
             log.error(ex) {
@@ -136,7 +140,6 @@ class KafkaConsumerConfig(
             }
             TopicPartition(dlqTopic, record.partition())
         }
-    }
 
     /**
      * DLQ 지원 Error Handler
@@ -145,13 +148,12 @@ class KafkaConsumerConfig(
      */
     @Bean
     @ConditionalOnProperty("notification.dlq.enabled", havingValue = "true", matchIfMissing = true)
-    fun kafkaErrorHandler(
-        deadLetterPublishingRecoverer: DeadLetterPublishingRecoverer
-    ): CommonErrorHandler {
-        val backOff = FixedBackOff(
-            properties.dlq.retryBackoffMs,
-            properties.dlq.maxRetries.toLong()
-        )
+    fun kafkaErrorHandler(deadLetterPublishingRecoverer: DeadLetterPublishingRecoverer): CommonErrorHandler {
+        val backOff =
+            FixedBackOff(
+                properties.dlq.retryBackoffMs,
+                properties.dlq.maxRetries.toLong(),
+            )
 
         return DefaultErrorHandler(deadLetterPublishingRecoverer, backOff).apply {
             // 재시도하지 않을 예외 타입 설정 (필요시)
@@ -171,46 +173,43 @@ class KafkaConsumerConfig(
      */
     @Bean
     @ConditionalOnProperty("notification.dlq.enabled", havingValue = "false")
-    fun simpleErrorHandler(): CommonErrorHandler {
-        return DefaultErrorHandler().apply {
+    fun simpleErrorHandler(): CommonErrorHandler =
+        DefaultErrorHandler().apply {
             // 재시도 없이 로깅만 하고 커밋
             setBackOffFunction { _, _ -> FixedBackOff(0, 0) }
         }
-    }
 
     /**
      * Inventory Event Listener Container Factory
      */
     @Bean
     fun inventoryListenerContainerFactory(
-        errorHandler: CommonErrorHandler
-    ): ConcurrentKafkaListenerContainerFactory<String, ProductInventoryEvent> {
-        return ConcurrentKafkaListenerContainerFactory<String, ProductInventoryEvent>().apply {
+        errorHandler: CommonErrorHandler,
+    ): ConcurrentKafkaListenerContainerFactory<String, ProductInventoryEvent> =
+        ConcurrentKafkaListenerContainerFactory<String, ProductInventoryEvent>().apply {
             consumerFactory = inventoryConsumerFactory()
             containerProperties.ackMode = ContainerProperties.AckMode.RECORD
             setCommonErrorHandler(errorHandler)
             isBatchListener = false
-            setConcurrency(3)  // product.inventory.v1 파티션 수
+            setConcurrency(3) // product.inventory.v1 파티션 수
             // 분산 트레이싱 Observation 활성화
             containerProperties.isObservationEnabled = true
         }
-    }
 
     /**
      * Notification Event Listener Container Factory (Push Sender용)
      */
     @Bean
     fun notificationListenerContainerFactory(
-        errorHandler: CommonErrorHandler
-    ): ConcurrentKafkaListenerContainerFactory<String, NotificationEvent> {
-        return ConcurrentKafkaListenerContainerFactory<String, NotificationEvent>().apply {
+        errorHandler: CommonErrorHandler,
+    ): ConcurrentKafkaListenerContainerFactory<String, NotificationEvent> =
+        ConcurrentKafkaListenerContainerFactory<String, NotificationEvent>().apply {
             consumerFactory = notificationConsumerFactory()
             containerProperties.ackMode = ContainerProperties.AckMode.RECORD
             setCommonErrorHandler(errorHandler)
             isBatchListener = false
-            setConcurrency(6)  // notification.push.v1 파티션 수
+            setConcurrency(6) // notification.push.v1 파티션 수
             // 분산 트레이싱 Observation 활성화
             containerProperties.isObservationEnabled = true
         }
-    }
 }

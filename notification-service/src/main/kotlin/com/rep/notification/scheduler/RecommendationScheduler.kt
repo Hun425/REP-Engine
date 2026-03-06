@@ -13,6 +13,7 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.CloseableCoroutineDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
@@ -21,7 +22,6 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.time.Instant
 import java.util.UUID
 
@@ -37,14 +37,14 @@ private val log = KotlinLogging.logger {}
  * - 배치 처리: Kafka 버스트 방지를 위한 청크 단위 발송
  * - Rate Limiting: 유저별 일일 알림 한도 준수
  *
- * @see docs/phase%204.md - RECOMMENDATION 알림
+ * @see docs/phase 4.md - RECOMMENDATION 알림
  */
 @Component
 @ConditionalOnProperty(
     prefix = "notification.recommendation",
     name = ["enabled"],
     havingValue = "true",
-    matchIfMissing = true
+    matchIfMissing = true,
 )
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecommendationScheduler(
@@ -55,36 +55,50 @@ class RecommendationScheduler(
     private val properties: NotificationProperties,
     @param:Qualifier("virtualThreadDispatcher")
     private val dispatcher: CloseableCoroutineDispatcher,
-    meterRegistry: MeterRegistry
+    meterRegistry: MeterRegistry,
 ) {
     // Metrics
-    private val batchStartedCounter = Counter.builder("batch.recommendation.started")
-        .description("Recommendation batch started count")
-        .register(meterRegistry)
+    private val batchStartedCounter =
+        Counter
+            .builder("batch.recommendation.started")
+            .description("Recommendation batch started count")
+            .register(meterRegistry)
 
-    private val batchCompletedCounter = Counter.builder("batch.recommendation.completed")
-        .description("Recommendation batch completed count")
-        .register(meterRegistry)
+    private val batchCompletedCounter =
+        Counter
+            .builder("batch.recommendation.completed")
+            .description("Recommendation batch completed count")
+            .register(meterRegistry)
 
-    private val batchFailedCounter = Counter.builder("batch.recommendation.failed")
-        .description("Recommendation batch failed count")
-        .register(meterRegistry)
+    private val batchFailedCounter =
+        Counter
+            .builder("batch.recommendation.failed")
+            .description("Recommendation batch failed count")
+            .register(meterRegistry)
 
-    private val notificationSentCounter = Counter.builder("batch.recommendation.sent")
-        .description("Recommendation notifications sent")
-        .register(meterRegistry)
+    private val notificationSentCounter =
+        Counter
+            .builder("batch.recommendation.sent")
+            .description("Recommendation notifications sent")
+            .register(meterRegistry)
 
-    private val rateLimitedCounter = Counter.builder("batch.recommendation.rate_limited")
-        .description("Users skipped due to rate limiting")
-        .register(meterRegistry)
+    private val rateLimitedCounter =
+        Counter
+            .builder("batch.recommendation.rate_limited")
+            .description("Users skipped due to rate limiting")
+            .register(meterRegistry)
 
-    private val noRecommendationCounter = Counter.builder("batch.recommendation.no_result")
-        .description("Users with no recommendations")
-        .register(meterRegistry)
+    private val noRecommendationCounter =
+        Counter
+            .builder("batch.recommendation.no_result")
+            .description("Users with no recommendations")
+            .register(meterRegistry)
 
-    private val batchDurationTimer = Timer.builder("batch.recommendation.duration")
-        .description("Recommendation batch duration")
-        .register(meterRegistry)
+    private val batchDurationTimer =
+        Timer
+            .builder("batch.recommendation.duration")
+            .description("Recommendation batch duration")
+            .register(meterRegistry)
 
     /**
      * 매일 지정 시간에 활성 유저에게 추천 알림 발송
@@ -93,11 +107,14 @@ class RecommendationScheduler(
      * - lockAtMostFor: 최대 1시간 락 유지 (장애 시 자동 해제)
      * - lockAtLeastFor: 최소 5분 락 유지 (빠른 완료 시에도 재실행 방지)
      */
-    @Scheduled(cron = "\${notification.recommendation.cron:0 0 9 * * *}", zone = "Asia/Seoul")
+    @Scheduled(
+        cron = "\${notification.recommendation.cron:0 0 9 * * *}",
+        zone = "\${notification.recommendation.zone:Asia/Seoul}",
+    )
     @SchedulerLock(
         name = "dailyRecommendationBatch",
         lockAtMostFor = "1h",
-        lockAtLeastFor = "5m"
+        lockAtLeastFor = "5m",
     )
     fun sendDailyRecommendations() {
         val sample = Timer.start()
@@ -123,9 +140,10 @@ class RecommendationScheduler(
      */
     private suspend fun executeBatch() {
         // 1. 활성 유저 조회
-        val activeUsers = activeUserRepository.getActiveUsers(
-            properties.recommendation.activeUserDays
-        )
+        val activeUsers =
+            activeUserRepository.getActiveUsers(
+                properties.recommendation.activeUserDays,
+            )
 
         if (activeUsers.isEmpty()) {
             log.info { "No active users found, skipping batch" }
@@ -151,10 +169,11 @@ class RecommendationScheduler(
                 }
 
                 // 추천 상품 조회
-                val recommendations = recommendationClient.getRecommendations(
-                    userId = userId,
-                    limit = properties.recommendation.limit
-                )
+                val recommendations =
+                    recommendationClient.getRecommendations(
+                        userId = userId,
+                        limit = properties.recommendation.limit,
+                    )
 
                 if (recommendations == null || recommendations.recommendations.isEmpty()) {
                     noResultCount++
@@ -188,16 +207,17 @@ class RecommendationScheduler(
      */
     private fun createNotification(
         userId: String,
-        recommendations: com.rep.notification.client.RecommendationResponse
+        recommendations: com.rep.notification.client.RecommendationResponse,
     ): NotificationEvent {
         val products = recommendations.recommendations
         val productNames = products.joinToString(", ") { it.productName }
         val firstProductId = products.firstOrNull()?.productId ?: "unknown"
 
-        return NotificationEvent.newBuilder()
+        return NotificationEvent
+            .newBuilder()
             .setNotificationId(UUID.randomUUID().toString())
             .setUserId(userId)
-            .setProductId(firstProductId)  // 대표 상품 ID
+            .setProductId(firstProductId) // 대표 상품 ID
             .setNotificationType(NotificationType.RECOMMENDATION)
             .setTitle("오늘의 추천 상품")
             .setBody("${productNames}을(를) 추천드려요!")
@@ -205,10 +225,9 @@ class RecommendationScheduler(
                 mapOf(
                     "strategy" to recommendations.strategy,
                     "productCount" to products.size.toString(),
-                    "productIds" to products.joinToString(",") { it.productId }
-                )
-            )
-            .setChannels(listOf(Channel.PUSH, Channel.IN_APP))
+                    "productIds" to products.joinToString(",") { it.productId },
+                ),
+            ).setChannels(listOf(Channel.PUSH, Channel.IN_APP))
             .setPriority(Priority.NORMAL)
             .setTimestamp(Instant.now())
             .build()

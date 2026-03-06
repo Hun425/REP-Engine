@@ -17,7 +17,7 @@ private val log = KotlinLogging.logger {}
 data class ElasticsearchProperties(
     val host: String = "localhost",
     val port: Int = 9200,
-    val scheme: String = "http"
+    val scheme: String = "http",
 )
 
 /**
@@ -25,16 +25,18 @@ data class ElasticsearchProperties(
  */
 @Configuration
 class ElasticsearchConfig(
-    private val properties: ElasticsearchProperties
+    private val properties: ElasticsearchProperties,
 ) {
     private var restClient: RestClient? = null
     private var transport: RestClientTransport? = null
 
     @Bean
     fun elasticsearchClient(): ElasticsearchClient {
-        restClient = RestClient.builder(
-            HttpHost(properties.host, properties.port, properties.scheme)
-        ).build()
+        restClient =
+            RestClient
+                .builder(
+                    HttpHost(properties.host, properties.port, properties.scheme),
+                ).build()
 
         transport = RestClientTransport(restClient, JacksonJsonpMapper())
 

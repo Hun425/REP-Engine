@@ -19,14 +19,15 @@ private val log = KotlinLogging.logger {}
  */
 @Component
 class LoadTestResultStore(
-    private val properties: LoadTestProperties
+    private val properties: LoadTestProperties,
 ) {
-    private val objectMapper = ObjectMapper().apply {
-        registerModule(JavaTimeModule())
-        registerModule(KotlinModule.Builder().build())
-        disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-        enable(SerializationFeature.INDENT_OUTPUT)
-    }
+    private val objectMapper =
+        ObjectMapper().apply {
+            registerModule(JavaTimeModule())
+            registerModule(KotlinModule.Builder().build())
+            disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            enable(SerializationFeature.INDENT_OUTPUT)
+        }
 
     private val resultsPath: Path
         get() = Paths.get(properties.resultsDir)
@@ -46,7 +47,8 @@ class LoadTestResultStore(
     fun findAll(): List<LoadTestResultSummary> {
         if (!Files.exists(resultsPath)) return emptyList()
 
-        return Files.list(resultsPath)
+        return Files
+            .list(resultsPath)
             .filter { it.toString().endsWith(".json") }
             .map { path ->
                 try {
@@ -56,8 +58,7 @@ class LoadTestResultStore(
                     log.warn { "Failed to read result file ${path.fileName}: ${e.message}" }
                     null
                 }
-            }
-            .filter { it != null }
+            }.filter { it != null }
             .map { it!! }
             .sorted(Comparator.comparing(LoadTestResultSummary::startedAt).reversed())
             .toList()
@@ -84,24 +85,28 @@ class LoadTestResultStore(
         }
     }
 
-    fun updateNote(id: String, note: String): Boolean {
+    fun updateNote(
+        id: String,
+        note: String,
+    ): Boolean {
         val result = findById(id) ?: return false
         val updated = result.copy(note = note)
         save(updated)
         return true
     }
 
-    private fun LoadTestResult.toSummary() = LoadTestResultSummary(
-        id = id,
-        scenario = scenario,
-        startedAt = startedAt,
-        durationSec = durationSec,
-        note = note,
-        recApiP95Ms = finalMetrics.recApiP95Ms,
-        recApiP99Ms = finalMetrics.recApiP99Ms,
-        kafkaConsumerLag = finalMetrics.kafkaConsumerLag,
-        totalErrors = finalMetrics.totalErrors,
-        totalRequestsSent = finalMetrics.totalRequestsSent,
-        avgLatencyMs = finalMetrics.avgLatencyMs
-    )
+    private fun LoadTestResult.toSummary() =
+        LoadTestResultSummary(
+            id = id,
+            scenario = scenario,
+            startedAt = startedAt,
+            durationSec = durationSec,
+            note = note,
+            recApiP95Ms = finalMetrics.recApiP95Ms,
+            recApiP99Ms = finalMetrics.recApiP99Ms,
+            kafkaConsumerLag = finalMetrics.kafkaConsumerLag,
+            totalErrors = finalMetrics.totalErrors,
+            totalRequestsSent = finalMetrics.totalRequestsSent,
+            avgLatencyMs = finalMetrics.avgLatencyMs,
+        )
 }

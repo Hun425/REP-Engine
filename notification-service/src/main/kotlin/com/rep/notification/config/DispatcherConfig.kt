@@ -5,7 +5,6 @@ import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import mu.KotlinLogging
-import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.util.concurrent.Executors
@@ -20,14 +19,13 @@ private val log = KotlinLogging.logger {}
 @Configuration
 @OptIn(ExperimentalCoroutinesApi::class)
 class DispatcherConfig {
-
     private var dispatcher: CloseableCoroutineDispatcher? = null
 
-    @Bean
-    @Qualifier("virtualThreadDispatcher")
+    @Bean("virtualThreadDispatcher")
     fun virtualThreadDispatcher(): CloseableCoroutineDispatcher {
         log.info { "Creating Virtual Thread Coroutine Dispatcher for notification-service" }
-        return Executors.newVirtualThreadPerTaskExecutor()
+        return Executors
+            .newVirtualThreadPerTaskExecutor()
             .asCoroutineDispatcher()
             .also { dispatcher = it }
     }

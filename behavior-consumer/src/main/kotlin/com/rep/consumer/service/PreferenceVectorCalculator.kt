@@ -19,27 +19,27 @@ private val log = KotlinLogging.logger {}
  * - CLICK: 0.3 (중간 신호)
  * - PURCHASE: 0.5 (강한 신호)
  *
- * @see docs/phase%202.md
+ * @see docs/phase 2.md
  */
 @Component
 class PreferenceVectorCalculator(
-    private val consumerProperties: ConsumerProperties
+    private val consumerProperties: ConsumerProperties,
 ) {
     companion object {
         // EMA 가중치 (CLAUDE.md 및 Phase 3 문서 기준)
         // 강한 신호
-        const val ALPHA_PURCHASE = 0.5f       // 구매: 가장 강한 관심 신호
+        const val ALPHA_PURCHASE = 0.5f // 구매: 가장 강한 관심 신호
 
         // 중간 강도 신호
-        const val ALPHA_ADD_TO_CART = 0.3f    // 장바구니: 구매 의도가 있는 강한 신호
-        const val ALPHA_CLICK = 0.3f          // 클릭: 적극적인 관심
+        const val ALPHA_ADD_TO_CART = 0.3f // 장바구니: 구매 의도가 있는 강한 신호
+        const val ALPHA_CLICK = 0.3f // 클릭: 적극적인 관심
 
         // 중간 신호
-        const val ALPHA_SEARCH = 0.2f         // 검색: 탐색 의도
+        const val ALPHA_SEARCH = 0.2f // 검색: 탐색 의도
 
         // 약한 신호
-        const val ALPHA_VIEW = 0.1f           // 조회: 수동적 노출
-        const val ALPHA_WISHLIST = 0.1f       // 위시리스트: 나중을 위한 저장
+        const val ALPHA_VIEW = 0.1f // 조회: 수동적 노출
+        const val ALPHA_WISHLIST = 0.1f // 위시리스트: 나중을 위한 저장
     }
 
     private val expectedVectorDimensions: Int get() = consumerProperties.vectorDimensions
@@ -55,7 +55,7 @@ class PreferenceVectorCalculator(
     fun update(
         currentPreference: FloatArray?,
         newProductVector: FloatArray,
-        actionType: String
+        actionType: String,
     ): FloatArray {
         // 벡터 차원 검증
         require(newProductVector.size == expectedVectorDimensions) {
@@ -80,9 +80,10 @@ class PreferenceVectorCalculator(
         }
 
         // 기존 유저: EMA로 벡터 갱신
-        val updated = FloatArray(currentPreference.size) { i ->
-            currentPreference[i] * (1 - alpha) + newProductVector[i] * alpha
-        }
+        val updated =
+            FloatArray(currentPreference.size) { i ->
+                currentPreference[i] * (1 - alpha) + newProductVector[i] * alpha
+            }
 
         return updated.normalize()
     }
@@ -97,7 +98,7 @@ class PreferenceVectorCalculator(
      */
     fun updateBatch(
         currentPreference: FloatArray?,
-        productVectorsWithActions: List<Pair<FloatArray, String>>
+        productVectorsWithActions: List<Pair<FloatArray, String>>,
     ): FloatArray? {
         if (productVectorsWithActions.isEmpty()) {
             return currentPreference
@@ -118,8 +119,8 @@ class PreferenceVectorCalculator(
      * @param actionType 행동 유형
      * @return EMA 가중치 (0.0f ~ 0.5f), 알 수 없는 행동은 0.0f
      */
-    private fun getAlpha(actionType: String): Float {
-        return when (actionType.uppercase()) {
+    private fun getAlpha(actionType: String): Float =
+        when (actionType.uppercase()) {
             "VIEW" -> ALPHA_VIEW
             "SEARCH" -> ALPHA_SEARCH
             "CLICK" -> ALPHA_CLICK
@@ -131,7 +132,6 @@ class PreferenceVectorCalculator(
                 0.0f
             }
         }
-    }
 
     /**
      * 벡터를 정규화합니다 (단위 벡터로 변환).

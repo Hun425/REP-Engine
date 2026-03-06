@@ -17,21 +17,21 @@ import org.springframework.data.redis.serializer.StringRedisSerializer
  */
 @Configuration
 class RedisConfig {
-
     @Bean
     @Primary
     fun reactiveRedisTemplate(
-        connectionFactory: ReactiveRedisConnectionFactory
+        connectionFactory: ReactiveRedisConnectionFactory,
     ): ReactiveRedisTemplate<String, String> {
         val serializer = StringRedisSerializer()
 
-        val context = RedisSerializationContext
-            .newSerializationContext<String, String>(serializer)
-            .key(serializer)
-            .value(serializer)
-            .hashKey(serializer)
-            .hashValue(serializer)
-            .build()
+        val context =
+            RedisSerializationContext
+                .newSerializationContext<String, String>(serializer)
+                .key(serializer)
+                .value(serializer)
+                .hashKey(serializer)
+                .hashValue(serializer)
+                .build()
 
         return ReactiveRedisTemplate(connectionFactory, context)
     }

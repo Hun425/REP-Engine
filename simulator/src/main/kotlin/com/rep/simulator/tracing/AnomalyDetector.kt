@@ -1,6 +1,10 @@
 package com.rep.simulator.tracing
 
-import com.rep.simulator.tracing.model.*
+import com.rep.simulator.tracing.model.AnomalyScanResult
+import com.rep.simulator.tracing.model.AnomalyType
+import com.rep.simulator.tracing.model.JaegerTrace
+import com.rep.simulator.tracing.model.Severity
+import com.rep.simulator.tracing.model.TraceAnomaly
 import mu.KotlinLogging
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -13,12 +17,11 @@ private val log = KotlinLogging.logger {}
 class AnomalyDetector(
     private val tracingService: TracingService,
     private val anomalyRepository: AnomalyRepository,
-    private val properties: TracingProperties
+    private val properties: TracingProperties,
 ) {
-
     private val scanning = AtomicBoolean(false)
 
-    @Scheduled(fixedDelayString = "#{${tracing.anomaly.scan-interval-minutes:5} * 60000}")
+    @Scheduled(fixedDelayString = "#{\${tracing.anomaly.scan-interval-minutes:5} * 60000}")
     fun scheduledScan() {
         if (!properties.anomaly.errorScanEnabled) return
         try {
@@ -41,12 +44,15 @@ class AnomalyDetector(
             val services = tracingService.getServices()
 
             for (service in services) {
-                val traces = tracingService.searchTraces(
-                    service = service,
-                    limit = 50,
-                    start = Instant.now().minusSeconds(properties.anomaly.scanIntervalMinutes * 60).toEpochMilli() * 1000,
-                    end = Instant.now().toEpochMilli() * 1000
-                )
+                val traces =
+                    tracingService.searchTraces(
+                        service = service,
+                        limit = 50,
+                        start =
+                            Instant.now().minusSeconds(properties.anomaly.scanIntervalMinutes * 60).toEpochMilli() *
+                                1000,
+                        end = Instant.now().toEpochMilli() * 1000,
+                    )
 
                 for (trace in traces) {
                     totalScanned++
@@ -65,7 +71,7 @@ class AnomalyDetector(
         return AnomalyScanResult(
             newAnomalies = newAnomalies,
             totalScanned = totalScanned,
-            scanDurationMs = duration
+            scanDurationMs = duration,
         )
     }
 
@@ -90,8 +96,8 @@ class AnomalyDetector(
                         operationName = rootSpan?.operationName ?: "unknown",
                         durationMs = traceDurationMs,
                         thresholdMs = properties.anomaly.slowThresholdMs,
-                        spanCount = trace.spans.size
-                    )
+                        spanCount = trace.spans.size,
+                    ),
                 )
                 count++
             }
@@ -103,12 +109,17 @@ class AnomalyDetector(
             val serviceName = trace.processes[span.processID]?.serviceName ?: "unknown"
 
             // ERROR_SPAN detection
-            val hasError = span.tags.any { it.key == "error" && it.value == true } ||
-                span.tags.any { it.key == "otel.status_code" && it.value == "ERROR" }
+            val hasError =
+                span.tags.any { it.key == "error" && it.value == true } ||
+                    span.tags.any { it.key == "otel.status_code" && it.value == "ERROR" }
 
             if (hasError) {
                 if (!anomalyRepository.existsByTraceIdAndType(trace.traceID, AnomalyType.ERROR_SPAN)) {
-                    val errorMsg = span.tags.find { it.key == "error.message" || it.key == "otel.status_description" }?.value?.toString()
+                    val errorMsg =
+                        span.tags
+                            .find { it.key == "error.message" || it.key == "otel.status_description" }
+                            ?.value
+                            ?.toString()
                     anomalyRepository.save(
                         TraceAnomaly(
                             traceId = trace.traceID,
@@ -117,8 +128,8 @@ class AnomalyDetector(
                             serviceName = serviceName,
                             operationName = span.operationName,
                             durationMs = spanDurationMs,
-                            errorMessage = errorMsg
-                        )
+                            errorMessage = errorMsg,
+                        ),
                     )
                     count++
                 }
@@ -126,7 +137,8 @@ class AnomalyDetector(
 
             // DLQ_ROUTED detection
             if (span.operationName.contains("dlq", ignoreCase = true) ||
-                span.tags.any { it.key == "messaging.destination.name" && it.value.toString().contains(".dlq") }) {
+                span.tags.any { it.key == "messaging.destination.name" && it.value.toString().contains(".dlq") }
+            ) {
                 if (!anomalyRepository.existsByTraceIdAndType(trace.traceID, AnomalyType.DLQ_ROUTED)) {
                     anomalyRepository.save(
                         TraceAnomaly(
@@ -135,8 +147,8 @@ class AnomalyDetector(
                             severity = Severity.CRITICAL,
                             serviceName = serviceName,
                             operationName = span.operationName,
-                            durationMs = spanDurationMs
-                        )
+                            durationMs = spanDurationMs,
+                        ),
                     )
                     count++
                 }

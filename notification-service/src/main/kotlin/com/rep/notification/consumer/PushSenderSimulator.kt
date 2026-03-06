@@ -22,27 +22,29 @@ private val log = KotlinLogging.logger {}
  *
  * 실제 운영에서는 FCM, APNs, SMS Gateway 등을 연동합니다.
  *
- * @see docs/phase%204.md - Push Sender
+ * @see docs/phase 4.md - Push Sender
  */
 @Component
 class PushSenderSimulator(
     private val historyService: NotificationHistoryService,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
 ) {
-    private val sentCounter = Counter.builder("notification.push.sent")
-        .description("Push notifications sent (simulated)")
-        .register(meterRegistry)
+    private val sentCounter =
+        Counter
+            .builder("notification.push.sent")
+            .description("Push notifications sent (simulated)")
+            .register(meterRegistry)
 
     private val channelCounters = java.util.concurrent.ConcurrentHashMap<String, Counter>()
 
     @KafkaListener(
         topics = ["\${notification.notification-topic}"],
         groupId = "push-sender-group",
-        containerFactory = "notificationListenerContainerFactory"
+        containerFactory = "notificationListenerContainerFactory",
     )
     fun consume(
         record: ConsumerRecord<String, NotificationEvent>,
-        acknowledgment: Acknowledgment
+        acknowledgment: Acknowledgment,
     ) {
         val notification = record.value()
 
@@ -63,7 +65,6 @@ class PushSenderSimulator(
 
             sentCounter.increment()
             acknowledgment.acknowledge()
-
         } catch (e: Exception) {
             log.error(e) { "Failed to send notification: ${notification.notificationId}" }
             historyService.save(notification, SendStatus.FAILED)
@@ -71,7 +72,10 @@ class PushSenderSimulator(
         }
     }
 
-    private fun sendToChannel(channel: Channel, notification: NotificationEvent) {
+    private fun sendToChannel(
+        channel: Channel,
+        notification: NotificationEvent,
+    ) {
         when (channel) {
             Channel.PUSH -> simulatePush(notification)
             Channel.SMS -> simulateSms(notification)
@@ -111,12 +115,12 @@ class PushSenderSimulator(
         // 실제 구현: WebSocket을 통해 실시간 전송
     }
 
-    private fun getChannelCounter(channel: String): Counter {
-        return channelCounters.getOrPut(channel) {
-            Counter.builder("notification.push.channel")
+    private fun getChannelCounter(channel: String): Counter =
+        channelCounters.getOrPut(channel) {
+            Counter
+                .builder("notification.push.channel")
                 .tag("channel", channel)
                 .description("Notifications sent per channel")
                 .register(meterRegistry)
         }
-    }
 }

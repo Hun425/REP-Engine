@@ -2,7 +2,14 @@ package com.rep.simulator.loadtest
 
 import com.rep.simulator.service.InventorySimulator
 import com.rep.simulator.service.TrafficSimulator
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -25,19 +32,26 @@ class LoadTestService(
     private val recLoadGenerator: RecommendationLoadGenerator,
     private val metricsCollector: MetricsCollector,
     private val resultStore: LoadTestResultStore,
-    private val properties: LoadTestProperties
+    private val properties: LoadTestProperties,
 ) {
     private val virtualThreadDispatcher = Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
     private val scope = CoroutineScope(virtualThreadDispatcher + SupervisorJob())
     private val lock = ReentrantLock()
 
     @Volatile private var currentTestId: String? = null
+
     @Volatile private var currentScenario: LoadTestScenario? = null
+
     @Volatile private var currentConfig: LoadTestConfig? = null
+
     @Volatile private var currentPhase: LoadTestPhase = LoadTestPhase.NOT_STARTED
+
     @Volatile private var startedAt: Instant? = null
+
     @Volatile private var currentStage: Int = 0
+
     @Volatile private var totalStages: Int = 0
+
     @Volatile private var latestMetrics: LoadTestMetrics? = null
 
     private val metricsTimeSeries = mutableListOf<TimestampedMetrics>()
@@ -46,63 +60,13 @@ class LoadTestService(
 
     fun startTest(request: LoadTestStartRequest): LoadTestStatus {
         lock.withLock {
-            if (currentPhase == LoadTestPhase.RUNNING || currentPhase == LoadTestPhase.STOPPING) {
-                throw IllegalStateException("A load test is already running (phase=$currentPhase)")
-            }
+            ensureNoRunningTest()
 
-            val testId = "lt-${System.currentTimeMillis()}"
-            currentTestId = testId
-            currentScenario = request.scenario
-            currentConfig = request.config
-            currentPhase = LoadTestPhase.RUNNING
-            startedAt = Instant.now()
-            currentStage = 0
-            totalStages = 0
-            latestMetrics = null
-            metricsTimeSeries.clear()
-
+            val testId = initializeTestState(request)
             log.info { "Starting load test $testId: scenario=${request.scenario}" }
 
-            // Start metrics collection loop
-            metricsJob = scope.launch {
-                while (isActive) {
-                    try {
-                        val prometheusMetrics = metricsCollector.collect()
-                        val recStats = recLoadGenerator.getStats()
-                        val combined = prometheusMetrics.copy(
-                            totalRequestsSent = recStats.totalRequests,
-                            totalErrors = recStats.totalErrors,
-                            avgLatencyMs = recStats.avgLatencyMs
-                        )
-                        latestMetrics = combined
-                        val elapsed = java.time.Duration.between(startedAt, Instant.now()).seconds
-                        metricsTimeSeries.add(TimestampedMetrics(Instant.now(), elapsed, combined))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        log.warn { "Metrics collection failed: ${e.message}" }
-                    }
-                    delay(properties.metricsCollectIntervalMs)
-                }
-            }
-
-            // Start scenario orchestrator
-            orchestratorJob = scope.launch {
-                try {
-                    when (request.scenario) {
-                        LoadTestScenario.PIPELINE_STRESS -> runPipelineStress(request.config)
-                        LoadTestScenario.RECOMMENDATION_LOAD -> runRecommendationLoad(request.config)
-                        LoadTestScenario.NOTIFICATION_LOAD -> runNotificationLoad(request.config)
-                    }
-                    completeTest()
-                } catch (e: CancellationException) {
-                    log.info { "Load test $testId was cancelled" }
-                } catch (e: Exception) {
-                    log.error(e) { "Load test $testId failed" }
-                    currentPhase = LoadTestPhase.FAILED
-                    saveResult()
-                }
-            }
+            metricsJob = launchMetricsCollection()
+            orchestratorJob = launchScenarioOrchestrator(testId, request)
 
             return getStatus()
         }
@@ -117,18 +81,8 @@ class LoadTestService(
             log.info { "Stopping load test $currentTestId" }
             currentPhase = LoadTestPhase.STOPPING
 
-            // Stop all generators
-            trafficSimulator.stopSimulation()
-            inventorySimulator.stopSimulation()
-            recLoadGenerator.stop()
-
-            // Cancel orchestrator
-            orchestratorJob?.cancel()
-            orchestratorJob = null
-
-            // Cancel metrics collection
-            metricsJob?.cancel()
-            metricsJob = null
+            stopGenerators()
+            cancelRunningJobs()
 
             saveResult()
             currentPhase = LoadTestPhase.COMPLETED
@@ -138,11 +92,14 @@ class LoadTestService(
     }
 
     fun getStatus(): LoadTestStatus {
-        val elapsed = if (startedAt != null && currentPhase == LoadTestPhase.RUNNING) {
-            java.time.Duration.between(startedAt, Instant.now()).seconds
-        } else {
-            0L
-        }
+        val elapsed =
+            if (startedAt != null && currentPhase == LoadTestPhase.RUNNING) {
+                java.time.Duration
+                    .between(startedAt, Instant.now())
+                    .seconds
+            } else {
+                0L
+            }
 
         return LoadTestStatus(
             id = currentTestId,
@@ -152,25 +109,28 @@ class LoadTestService(
             elapsedSec = elapsed,
             currentStage = currentStage,
             totalStages = totalStages,
-            metrics = latestMetrics
+            metrics = latestMetrics,
         )
     }
 
     // === Scenario Orchestrators ===
 
     private suspend fun runPipelineStress(config: LoadTestConfig) {
-        val stages = config.stages ?: listOf(
-            StageConfig(100, 30, 5),
-            StageConfig(300, 30, 5),
-            StageConfig(500, 30, 5),
-            StageConfig(800, 30, 10),
-            StageConfig(1000, 60, 15)
-        )
+        val stages =
+            config.stages ?: listOf(
+                StageConfig(100, 30, 5),
+                StageConfig(300, 30, 5),
+                StageConfig(500, 30, 5),
+                StageConfig(800, 30, 10),
+                StageConfig(1000, 60, 15),
+            )
         totalStages = stages.size
 
         for ((index, stage) in stages.withIndex()) {
             currentStage = index + 1
-            log.info { "Pipeline stress stage ${currentStage}/${totalStages}: ${stage.userCount} users for ${stage.durationSec}s" }
+            log.info {
+                "Pipeline stress stage $currentStage/$totalStages: ${stage.userCount} users for ${stage.durationSec}s"
+            }
 
             trafficSimulator.startSimulation(stage.userCount, config.delayMillis)
 
@@ -188,7 +148,9 @@ class LoadTestService(
     private suspend fun runRecommendationLoad(config: LoadTestConfig) {
         totalStages = 1
         currentStage = 1
-        log.info { "Recommendation load: ${config.concurrentUsers} users, interval=${config.requestIntervalMs}ms, duration=${config.durationSec}s" }
+        log.info {
+            "Recommendation load: ${config.concurrentUsers} users, interval=${config.requestIntervalMs}ms, duration=${config.durationSec}s"
+        }
 
         recLoadGenerator.start(config.concurrentUsers, config.requestIntervalMs)
 
@@ -231,6 +193,97 @@ class LoadTestService(
 
     // === Helpers ===
 
+    private fun ensureNoRunningTest() {
+        if (currentPhase == LoadTestPhase.RUNNING || currentPhase == LoadTestPhase.STOPPING) {
+            throw IllegalStateException("A load test is already running (phase=$currentPhase)")
+        }
+    }
+
+    private fun initializeTestState(request: LoadTestStartRequest): String {
+        val testId = "lt-${System.currentTimeMillis()}"
+        currentTestId = testId
+        currentScenario = request.scenario
+        currentConfig = request.config
+        currentPhase = LoadTestPhase.RUNNING
+        startedAt = Instant.now()
+        currentStage = 0
+        totalStages = 0
+        latestMetrics = null
+        metricsTimeSeries.clear()
+        return testId
+    }
+
+    private fun launchMetricsCollection(): Job =
+        scope.launch {
+            while (isActive) {
+                try {
+                    collectAndStoreMetrics()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn { "Metrics collection failed: ${e.message}" }
+                }
+                delay(properties.metricsCollectIntervalMs)
+            }
+        }
+
+    private suspend fun collectAndStoreMetrics() {
+        val prometheusMetrics = metricsCollector.collect()
+        val recStats = recLoadGenerator.getStats()
+        val combined =
+            prometheusMetrics.copy(
+                totalRequestsSent = recStats.totalRequests,
+                totalErrors = recStats.totalErrors,
+                avgLatencyMs = recStats.avgLatencyMs,
+            )
+        latestMetrics = combined
+
+        val testStart = startedAt ?: return
+        val elapsed =
+            java.time.Duration
+                .between(testStart, Instant.now())
+                .seconds
+        metricsTimeSeries.add(TimestampedMetrics(Instant.now(), elapsed, combined))
+    }
+
+    private fun launchScenarioOrchestrator(
+        testId: String,
+        request: LoadTestStartRequest,
+    ): Job =
+        scope.launch {
+            try {
+                runScenario(request)
+                completeTest()
+            } catch (e: CancellationException) {
+                log.info { "Load test $testId was cancelled" }
+            } catch (e: Exception) {
+                log.error(e) { "Load test $testId failed" }
+                currentPhase = LoadTestPhase.FAILED
+                saveResult()
+            }
+        }
+
+    private suspend fun runScenario(request: LoadTestStartRequest) {
+        when (request.scenario) {
+            LoadTestScenario.PIPELINE_STRESS -> runPipelineStress(request.config)
+            LoadTestScenario.RECOMMENDATION_LOAD -> runRecommendationLoad(request.config)
+            LoadTestScenario.NOTIFICATION_LOAD -> runNotificationLoad(request.config)
+        }
+    }
+
+    private fun stopGenerators() {
+        trafficSimulator.stopSimulation()
+        inventorySimulator.stopSimulation()
+        recLoadGenerator.stop()
+    }
+
+    private fun cancelRunningJobs() {
+        orchestratorJob?.cancel()
+        orchestratorJob = null
+        metricsJob?.cancel()
+        metricsJob = null
+    }
+
     private fun completeTest() {
         metricsJob?.cancel()
         metricsJob = null
@@ -246,16 +299,20 @@ class LoadTestService(
         val start = startedAt ?: return
         val now = Instant.now()
 
-        val result = LoadTestResult(
-            id = testId,
-            scenario = scenario,
-            config = config,
-            startedAt = start,
-            completedAt = now,
-            durationSec = java.time.Duration.between(start, now).seconds,
-            finalMetrics = latestMetrics ?: LoadTestMetrics(),
-            metricsTimeSeries = metricsTimeSeries.toList()
-        )
+        val result =
+            LoadTestResult(
+                id = testId,
+                scenario = scenario,
+                config = config,
+                startedAt = start,
+                completedAt = now,
+                durationSec =
+                    java.time.Duration
+                        .between(start, now)
+                        .seconds,
+                finalMetrics = latestMetrics ?: LoadTestMetrics(),
+                metricsTimeSeries = metricsTimeSeries.toList(),
+            )
 
         try {
             resultStore.save(result)
